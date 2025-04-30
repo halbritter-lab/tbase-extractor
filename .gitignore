@@ -1,0 +1,111 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.memo
+nosetests.xml
+coverage.html
+.coverage
+.nox/
+.tox/
+.venvs/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Editors, IDEs, etc.
+.vscode/        # Visual Studio Code
+.idea/          # PyCharm/IntelliJ IDEA
+*.swp           # vim swap files
+*.swo           # vim swap files
+*~              # backup files
+.sublime-project # Sublime Text
+.sublime-workspace # Sublime Text
+.DS_Store       # macOS
+Thumbs.db       # Windows
+ehthumbs.db     # Windows
+Icon?           # macOS icon files
+~$* # Windows temp files (e.g., Word docs)
+
+# OS-specific files
+.Trash/
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ipython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+# Pipfile.lock  # uncomment if you don't want to commit lock file
+
+# Docker
+Dockerfile.lock
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pytest
+.pytest_cache/
+
+# flake8
+.flake8
+
+# Development specific files
+.env            # environment variables file
+.flaskenv       # flask environment variables file
+.vscode.env     # vscode environment variables file
+
+# Database files
+*.sqlite3
+*.db
+
+# Log files
+*.log
+
+# Runtime files
+*.pid
+*.sock
+
+# Custom: Exclude JSON files ONLY in the top-level directory
+/*.json
+
+# output folder
+/output
