@@ -1,110 +1,143 @@
-# SQL Database Query Script
+# SQL Database Query Script (Refactored)
 
-This Python script provides a command-line interface to connect to a Microsoft SQL Server database, retrieve patient information by ID, or list available tables. It uses environment variables for secure database credentials and supports saving query results to a JSON file.
+This Python script provides a command-line interface to connect to a Microsoft SQL Server database, execute predefined queries (like retrieving patient information or listing tables), and output results to the console or a JSON file. It uses environment variables for secure database credentials and SQL templates for maintainable queries.
 
 ## Project Idea
 
-The goal of this project is to create a simple, reusable Python tool for interacting with a SQL Server database. It demonstrates secure credential management using `.env` files and provides flexible command-line options for performing common database tasks like querying specific records and inspecting database structure.
+The goal of this project is to create a simple, reusable, and maintainable Python tool for interacting with a SQL Server database. It demonstrates secure credential management, modular code structure, the use of SQL templates, and a flexible command-line interface.
 
 ## Implementation Details
 
-The script is implemented in Python and uses the following libraries:
+The application follows a modular structure:
 
-* `pyodbc`: For connecting to and interacting with the SQL Server database.
-* `python-dotenv`: For loading database credentials from a `.env` file, keeping sensitive information out of the main script.
-* `argparse`: For handling command-line arguments, providing a user-friendly interface for specifying actions (query patient or list tables) and options (output file).
-* `json`: For serializing query results into JSON format when saving to a file.
-* `os`: Used for checking and creating output directories.
-* `datetime`, `date`: Used for handling and serializing date/datetime objects from the database results into a JSON-compatible format.
+*   **`main.py`**: The main entry point, handling argument parsing and orchestrating the workflow.
+*   **`sql_interface/`**: A Python package containing the core logic:
+    *   `db_interface.py`: Manages the database connection (`SQLInterface` class) using `pyodbc`.
+    *   `query_manager.py`: Loads SQL queries from template files located in the `sql_templates/` directory.
+    *   `output_formatter.py`: Formats query results for console (using `tabulate` if available) or JSON output.
+    *   `exceptions.py`: Defines custom exception classes for specific errors.
+*   **`sql_templates/`**: Directory holding `.sql` files containing the parameterized query text.
 
-The script defines a `SQLInterface` class to encapsulate the database connection and query logic, making the main execution block cleaner and leveraging context managers (`with`) for reliable connection handling.
+Key Libraries Used:
+
+*   `pyodbc`: For connecting to and interacting with the SQL Server database.
+*   `python-dotenv`: For loading database credentials from a `.env` file.
+*   `argparse`: For handling command-line arguments via subparsers for different actions.
+*   `tabulate`: (Optional but recommended) For well-formatted console table output.
+*   `json`: For serializing query results into JSON format.
+*   `os`, `sys`, `datetime`: Standard libraries for path manipulation, system interaction, and date handling.
 
 ## Features
 
-* Secure database connection using environment variables (`.env`).
-* Connects to Microsoft SQL Server using `pyodbc`.
-* Query patient data by providing a patient ID via command-line argument (`-i` or `--patient-id`).
-* List all available tables in the database via a command-line argument (`-l` or `--list-tables`).
-* Mutually exclusive arguments: You must specify either a patient ID to query or request the table list.
-* Optional output to a JSON file (`-o` or `--output`) when querying a patient.
-* Automatically creates output directories if they don't exist.
-* Handles JSON serialization of date/datetime objects.
-* Basic error handling for database connection and query execution.
+*   **Secure Configuration:** Uses a `.env` file for database credentials and driver information.
+*   **Modular Design:** Code is separated into logical modules for better readability, maintainability, and testability.
+*   **SQL Templates:** SQL queries are stored in `.sql` files, keeping complex SQL separate from Python code. Parameterized queries (`?`) are used to prevent SQL injection.
+*   **Multiple Query Types:**
+    *   List available database tables.
+    *   Query patient data by `PatientID`.
+    *   Query patient data by `FirstName`, `LastName`, and `DateOfBirth`. (Easily extensible with more templates).
+*   **Flexible Output:**
+    *   Prints results to the console in a formatted table (`tabulate` preferred).
+    *   Saves results to a specified JSON file.
+*   **User-Friendly CLI:** Uses `argparse` with subparsers (`list-tables`, `query`) for clear command structure.
+*   **Date Handling:** Validates date input format and correctly serializes date/datetime objects for JSON output.
+*   **Error Handling:** Includes basic error handling for connection issues, query execution, template loading, and file I/O.
 
 ## Prerequisites
 
-* Python 3.6 or higher
-* `pyodbc` library
-* `python-dotenv` library
-* An ODBC driver for SQL Server installed on your system (e.g., "SQL Server Native Client 10.0" as specified in the script, or configure your `.env` to specify a different one).
-* Access to a Microsoft SQL Server database.
+*   Python 3.7 or higher (due to type hinting usage, though might work on 3.6)
+*   Access to a Microsoft SQL Server database.
+*   An **ODBC Driver for SQL Server** installed on your system (e.g., "ODBC Driver 17 for SQL Server", "SQL Server Native Client 11.0"). The exact name needs to match the `SQL_DRIVER` setting in your `.env` file.
 
 ## Installation
 
-1.  Clone or download the script file.
-2.  Install the required Python libraries:
+1.  Clone or download the project files.
+2.  **(Recommended)** Create and activate a Python virtual environment:
     ```bash
-    pip install pyodbc python-dotenv
+    python -m venv venv
+    # Windows: .\venv\Scripts\activate
+    # macOS/Linux: source venv/bin/activate
     ```
+3.  Install the required Python libraries from the `requirements.txt` file:
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *(This installs `pyodbc`, `python-dotenv`, and `tabulate`)*
 
 ## Setup
 
-1.  Create a file named `.env` in the same directory as the script.
-2.  Add your database connection details to the `.env` file in the following format:
+1.  Create a file named `.env` in the project's root directory (alongside `main.py`).
+2.  Add your database connection details to the `.env` file. **Crucially, ensure the `SQL_DRIVER` value exactly matches the name of the ODBC driver installed on your system.**
     ```dotenv
+    # .env
     SQL_SERVER=<your_sql_server_name_or_ip>
     DATABASE=<your_database_name>
-    USERNAME_SQL=<your_sql_server_username>
-    PASSWORD=<your_sql_server_password>
-    # Optional: Specify your ODBC driver if different from the default in the script
-    # DRIVER={Your ODBC Driver Name}
+    USERNAME_SQL=<your_sql_username>
+    PASSWORD=<your_sql_password>
+    SQL_DRIVER="{ODBC Driver 17 for SQL Server}" # <-- Example: Replace with your actual driver name
     ```
-    Replace the placeholder values with your actual database credentials.
+3.  Verify that the table and column names used in the `.sql` files within the `sql_templates/` directory (`dbo.Patient`, `PatientID`, `Vorname`, `Name`, `Geburtsdatum`) match your actual database schema. Adjust the templates if necessary.
 
 ## Usage
 
-Run the script from your terminal. You must provide either the patient ID (`-i`) or the list tables flag (`-l`).
+Run the script from your terminal within the project's root directory. Use subparsers `list-tables` or `query` to specify the action.
 
-* **Query a patient and print results to the console:**
+*   **Get Help:**
     ```bash
-    python sql_interface.py -i 12345
-    ```
-    or
-    ```bash
-    python sql_interface.py --patient-id 67890
+    python main.py -h
+    python main.py list-tables -h
+    python main.py query -h
     ```
 
-* **Query a patient and save results to a JSON file:**
+*   **List Available Tables:**
     ```bash
-    python sql_interface.py -i 12345 -o patient_data.json
-    ```
-    or save to a specific directory (directory will be created if it doesn't exist):
-    ```bash
-    python sql_interface.py --patient-id 67890 --output output/patient_details.json
+    python main.py list-tables
     ```
 
-* **List available tables:**
+*   **Query Patient by ID (Console Output):**
     ```bash
-    python sql_interface.py -l
+    python main.py query --query-name patient-details --patient-id 12345
     ```
-    or
+    *(Alias: `python main.py query -q patient-details -i 12345`)*
+
+*   **Query Patient by ID (JSON Output):**
     ```bash
-    python sql_interface.py --list-tables
+    python main.py query -q patient-details -i 12345 -o output/patient_12345.json
     ```
 
-* **Get help (view available options):**
+*   **Query Patient by Name and DOB (Console Output):**
     ```bash
-    python sql_interface.py -h
+    python main.py query --query-name patient-by-name-dob --first-name John --last-name Doe --dob 1990-05-20
     ```
-    or
+    *(Aliases: `python main.py query -q patient-by-name-dob -fn John -ln Doe -d 1990-05-20`)*
+    *(Note: Date format must be YYYY-MM-DD)*
+
+*   **Query Patient by Name and DOB (JSON Output):**
     ```bash
-    python sql_interface.py --help
+    python main.py query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -o output/jane_smith_data.json
     ```
+
+## Adding New Queries
+
+1.  Create a new `.sql` file in the `sql_templates/` directory (e.g., `get_orders_by_customer.sql`). Use `?` for parameters.
+2.  Add a corresponding convenience method in `sql_interface/query_manager.py` (e.g., `get_orders_by_customer_query(self, customer_id)`).
+3.  Update the `choices` for `--query-name` in `main.py`'s `setup_arg_parser` function.
+4.  Add necessary command-line arguments (e.g., `--customer-id`) to the `query` subparser in `main.py`.
+5.  Add an `elif` block in `main.py` to handle the new `--query-name`, validate its arguments, and call the appropriate `query_manager` method.
 
 ## Error Handling
 
-The script includes basic error handling for database connection issues and query execution errors. It also handles the case where a specified patient ID is not found. Errors during file saving are also caught and reported.
+The script includes handling for:
+
+*   Missing or incomplete `.env` configuration.
+*   Database connection errors (reporting SQLSTATE).
+*   Query execution errors (reporting SQLSTATE).
+*   Failure to fetch results.
+*   SQL template file not found (`QueryTemplateNotFoundError`).
+*   Missing required command-line arguments for specific queries.
+*   Incorrect date format for the `--dob` argument.
+*   Errors during JSON serialization or file output.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details (Note: A LICENSE file is not included in this README, you may want to add one to your project).
+This project is intended for educational purposes. You can adapt the license as needed. Consider adding a `LICENSE` file (e.g., with the MIT License text).
