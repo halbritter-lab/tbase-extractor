@@ -81,8 +81,8 @@ def setup_arg_parser():
         '--format', '-f',
         type=str,
         choices=['json', 'csv', 'tsv', 'stdout'],
-        default='stdout',
-        help='Output format: json, csv, tsv, or stdout (pretty table to console). Default: stdout.'
+        default=None,  # Changed from 'stdout' to None
+        help='Output format: json, csv, tsv, or stdout (pretty table to console). Inferred from -o extension if not set.'
     )
     parser_query.add_argument(
         '--debug', '-v',
@@ -91,48 +91,64 @@ def setup_arg_parser():
     )
     return parser
 
-def handle_output(results: list, output_file: str | None, query_name: str, output_format: str):
-    """Handles formatting and saving/printing the results with format selection."""
+def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None):
+    """Handles formatting and saving/printing the results with format selection and metadata."""
     import logging
     logger = logging.getLogger("main")
     output_formatter = OutputFormatter()
     formatted = ''
-    if output_format == 'json':
-        formatted = output_formatter.format_as_json(results)
-    elif output_format == 'csv':
-        formatted = output_formatter.format_as_csv(results)
-    elif output_format == 'tsv':
-        formatted = output_formatter.format_as_tsv(results)
-    elif output_format == 'stdout':
-        # Pretty table to console
-        if results:
-            print("\n--- Query Results ---")
-            output_formatter.format_as_console_table(results)
-        else:
-            print("No results to display.")
-        return
+    # Metadata summary (optional, for stdout/csv/tsv)
+    metadata_summary = ''
+    if metadata_dict:
+        metadata_lines = [f"# {k}: {v}" for k, v in metadata_dict.items()]
+        metadata_summary = '\n'.join(metadata_lines)
+    # Output routing
+    if output_file_path:
+        # Write to file
+        with open(output_file_path, 'w', encoding='utf-8', newline='') as f:
+            if effective_format == 'json':
+                f.write(output_formatter.format_as_json(results_envelope))
+            elif effective_format == 'csv':
+                if metadata_summary:
+                    f.write(metadata_summary + '\n')
+                f.write(output_formatter.format_as_csv(results_envelope))
+            elif effective_format == 'tsv':
+                if metadata_summary:
+                    f.write(metadata_summary + '\n')
+                f.write(output_formatter.format_as_tsv(results_envelope))
+            elif effective_format == 'stdout':
+                if metadata_summary:
+                    f.write(metadata_summary + '\n')
+                # Write pretty table to file
+                import io
+                buf = io.StringIO()
+                output_formatter.format_as_console_table(results_envelope, stream=buf)
+                f.write(buf.getvalue())
+            else:
+                logger.error(f"Unknown output format: {effective_format}")
+                print(f"Unknown output format: {effective_format}", file=sys.stderr)
+                return
+        logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")
     else:
-        print(f"Unknown output format: {output_format}", file=sys.stderr)
-        return
-
-    if output_file:
-        logger.info(f"Saving results for '{query_name}' to {output_file}...")
-        try:
-            output_dir = os.path.dirname(output_file)
-            if output_dir and not os.path.exists(output_dir):
-                logger.info(f"Creating directory: {output_dir}")
-                os.makedirs(output_dir, exist_ok=True)
-            with open(output_file, 'w', encoding='utf-8', newline='') as f:
-                f.write(formatted)
-            logger.info(f"Successfully saved results to {output_file}")
-        except IOError as e:
-            logger.error(f"Could not write to file {output_file}: {e}")
-            print(f"Error: Could not write to file {output_file}: {e}", file=sys.stderr)
-        except Exception as e:
-            logger.exception(f"An unexpected error occurred during output formatting or saving: {e}")
-            print(f"Error: An unexpected error occurred during output formatting or saving: {e}", file=sys.stderr)
-    elif formatted:
-        print(formatted)
+        # Output to stdout
+        if effective_format == 'json':
+            print(output_formatter.format_as_json(results_envelope))
+        elif effective_format == 'csv':
+            if metadata_summary:
+                print(metadata_summary)
+            print(output_formatter.format_as_csv(results_envelope))
+        elif effective_format == 'tsv':
+            if metadata_summary:
+                print(metadata_summary)
+            print(output_formatter.format_as_tsv(results_envelope))
+        elif effective_format == 'stdout':
+            if metadata_summary:
+                print(metadata_summary)
+            output_formatter.format_as_console_table(results_envelope, stream=sys.stdout)
+        else:
+            logger.error(f"Unknown output format: {effective_format}")
+            print(f"Unknown output format: {effective_format}", file=sys.stderr)
+            return
 
 # Logging configuration (set up early)
 def setup_logging(debug: bool = False, log_file: str = None):
@@ -292,9 +308,39 @@ def main():
     # --- 3. Handle Output ---
     if results is not None:
         output_file_path = getattr(args, 'output', None)
-        output_format = getattr(args, 'format', 'stdout')
-        handle_output(results, output_file_path, query_display_name, output_format)
-
+        user_format = getattr(args, 'format', None)
+        # --- Output format inference logic ---
+        output_destination_is_file = output_file_path is not None
+        effective_format = None
+        logger = logging.getLogger("main")
+        if user_format is not None:
+            effective_format = user_format
+        elif output_destination_is_file:
+            _filename, ext = os.path.splitext(output_file_path)
+            ext = ext.lower()
+            if ext == '.json':
+                effective_format = 'json'
+            elif ext == '.csv':
+                effective_format = 'csv'
+            elif ext == '.tsv':
+                effective_format = 'tsv'
+            else:
+                effective_format = 'json'
+                if ext:
+                    logger.warning(
+                        f"Output file extension '{ext}' for '{output_file_path}' is not recognized. "
+                        f"Defaulting to 'json' format."
+                    )
+                else:
+                    logger.warning(
+                        f"No output file extension provided for '{output_file_path}'. "
+                        f"Defaulting to 'json' format."
+                    )
+        else:
+            effective_format = 'stdout'
+        # Optionally, build metadata_dict (example: row count)
+        metadata_dict = {'row_count': len(results)} if results is not None else None
+        handle_output(results, output_file_path, query_display_name, effective_format, metadata_dict)
     print(f"\n--- {query_display_name} finished ---")
 
 if __name__ == "__main__":
