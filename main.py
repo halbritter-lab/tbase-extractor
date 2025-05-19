@@ -5,6 +5,7 @@ import sys
 import pyodbc
 from datetime import datetime, date # Import datetime for strptime
 from dotenv import load_dotenv
+import logging
 
 load_dotenv()
 
@@ -92,6 +93,8 @@ def setup_arg_parser():
 
 def handle_output(results: list, output_file: str | None, query_name: str, output_format: str):
     """Handles formatting and saving/printing the results with format selection."""
+    import logging
+    logger = logging.getLogger("main")
     output_formatter = OutputFormatter()
     formatted = ''
     if output_format == 'json':
@@ -113,21 +116,38 @@ def handle_output(results: list, output_file: str | None, query_name: str, outpu
         return
 
     if output_file:
-        print(f"\nSaving results for '{query_name}' to {output_file}...")
+        logger.info(f"Saving results for '{query_name}' to {output_file}...")
         try:
             output_dir = os.path.dirname(output_file)
             if output_dir and not os.path.exists(output_dir):
-                print(f"Creating directory: {output_dir}")
+                logger.info(f"Creating directory: {output_dir}")
                 os.makedirs(output_dir, exist_ok=True)
             with open(output_file, 'w', encoding='utf-8', newline='') as f:
                 f.write(formatted)
-            print(f"Successfully saved results to {output_file}")
+            logger.info(f"Successfully saved results to {output_file}")
         except IOError as e:
+            logger.error(f"Could not write to file {output_file}: {e}")
             print(f"Error: Could not write to file {output_file}: {e}", file=sys.stderr)
         except Exception as e:
+            logger.exception(f"An unexpected error occurred during output formatting or saving: {e}")
             print(f"Error: An unexpected error occurred during output formatting or saving: {e}", file=sys.stderr)
     elif formatted:
         print(formatted)
+
+# Logging configuration (set up early)
+def setup_logging(debug: bool = False, log_file: str = None):
+    """Configure logging for the application."""
+    log_level = logging.DEBUG if debug else logging.INFO
+    log_format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if log_file:
+        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        handlers=handlers,
+        force=True  # Overwrite any prior config (for repeated runs in notebooks etc.)
+    )
 
 def main():
     """Main execution function."""
@@ -135,9 +155,12 @@ def main():
     args = parser.parse_args()
 
     debug = getattr(args, 'debug', False)
+    # Optional: allow user to specify log file via env or argument
+    log_file = os.getenv('SQL_APP_LOGFILE', None)
+    setup_logging(debug, log_file)
+    logger = logging.getLogger("main")
 
-    if debug:
-        print(f"[DEBUG] Parsed arguments: {args}")
+    logger.debug(f"Parsed arguments: {args}")
 
     query_manager = QueryManager(SQL_TEMPLATES_DIR)
     sql: str = ""
@@ -156,6 +179,7 @@ def main():
 
             if args.query_name == 'patient-details':
                 if args.patient_id is None:
+                    logger.error("Argument --patient-id/-i is REQUIRED for query 'patient-details'.")
                     parser.error("Argument --patient-id/-i is REQUIRED for query 'patient-details'.")
                 query_info = query_manager.get_patient_by_id_query(args.patient_id)
 
@@ -163,6 +187,7 @@ def main():
             elif args.query_name == 'patient-by-name-dob':
                 # Check required arguments
                 if not all([args.first_name, args.last_name, args.dob]):
+                    logger.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED for query 'patient-by-name-dob'.")
                     parser.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED "
                                  "for query 'patient-by-name-dob'.")
 
@@ -171,6 +196,7 @@ def main():
                 try:
                     dob_object = datetime.strptime(args.dob, DOB_FORMAT).date()
                 except ValueError:
+                    logger.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
                     parser.error(f"Invalid Date of Birth format for --dob/-d. "
                                  f"Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
 
@@ -181,15 +207,18 @@ def main():
             # --- REMOVED 'patient-visits' block ---
 
             else:
+                logger.error(f"Query name '{args.query_name}' is not recognized or implemented.")
                 print(f"Error: Query name '{args.query_name}' is not recognized or implemented.", file=sys.stderr)
                 sys.exit(1)
 
             # Check if query loading/preparation failed
             if query_info is None:
+                logger.error(f"Failed to load or prepare query '{args.query_name}'.")
                 print(f"Error: Failed to load or prepare query '{args.query_name}'.", file=sys.stderr)
                 sys.exit(1)
 
         if query_info is None:
+             logger.error(f"Could not determine query for action '{args.action}'.")
              print(f"Error: Could not determine query for action '{args.action}'.", file=sys.stderr)
              sys.exit(1)
 
@@ -203,53 +232,58 @@ def main():
         sys.exit(1)
 
     if debug:
-        print(f"[DEBUG] SQL to execute:\n{sql}")
-        print(f"[DEBUG] Query parameters: {params}")
+        logger.debug(f"SQL to execute:\n{sql}")
+        logger.debug(f"Query parameters: {params}")
 
     # --- 2. Connect, Execute, Fetch ---
     results = None
-    print(f"\nAttempting to execute: {query_display_name}")
+    logger.info(f"Attempting to execute: {query_display_name}")
     if params:
-         print(f"With parameters: {params}") # DOB will print as YYYY-MM-DD
+         logger.info(f"With parameters: {params}") # DOB will print as YYYY-MM-DD
     if debug:
-        print("[DEBUG] Attempting database connection...")
+        logger.debug("Attempting database connection...")
 
     try:
         with SQLInterface(debug=debug) as db:
             if not db.connection:
+                logger.error("Aborting: Database connection failed.")
                 print("Aborting: Database connection failed.", file=sys.stderr)
                 sys.exit(1)
 
             if db.execute_query(sql, params):
                 if debug:
-                    print("[DEBUG] Query executed successfully. Fetching results...")
+                    logger.debug("Query executed successfully. Fetching results...")
                 fetched_data = db.fetch_results()
                 if fetched_data is not None:
                     results = fetched_data
                     if debug:
-                        print(f"[DEBUG] Number of rows fetched: {len(results)}")
+                        logger.debug(f"Number of rows fetched: {len(results)}")
                     if not results:
                          # --- UPDATED 'no results' message ---
                          if args.action == 'query':
                             if args.query_name == 'patient-details':
-                                print(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
+                                logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
                             elif args.query_name == 'patient-by-name-dob':
-                                print(f"Query executed successfully, but no data found for "
+                                logger.info(f"Query executed successfully, but no data found for "
                                       f"FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
                             else: # General case
-                                 print("Query executed successfully, but returned no results.")
+                                 logger.info("Query executed successfully, but returned no results.")
                          else: # For list-tables etc. if they return empty
-                            print("Query executed successfully, but returned no results.")
+                            logger.info("Query executed successfully, but returned no results.")
                 else:
+                    logger.error("Error occurred while fetching results.")
                     print("Error occurred while fetching results.", file=sys.stderr)
             else:
+                logger.error("Aborting: Query execution failed.")
                 print("Aborting: Query execution failed.", file=sys.stderr)
                 sys.exit(1)
 
     except pyodbc.Error as db_err:
+        logger.exception(f"A database error occurred: {db_err}")
         print(f"\nA database error occurred: {db_err}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
+        logger.exception(f"An unexpected error occurred during database interaction: {e}")
         print(f"\nAn unexpected error occurred during database interaction: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
