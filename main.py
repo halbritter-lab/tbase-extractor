@@ -71,12 +71,37 @@ def setup_arg_parser():
         '--output', '-o', type=str, metavar='FILE_PATH',
         help='Optional path to save results as a JSON file.'
     )
+    parser_query.add_argument(
+        '--format', '-f',
+        type=str,
+        choices=['json', 'csv', 'tsv', 'stdout'],
+        default='stdout',
+        help='Output format: json, csv, tsv, or stdout (pretty table to console). Default: stdout.'
+    )
     return parser
 
-def handle_output(results: list, output_file: str | None, query_name: str):
-    """Handles formatting and saving/printing the results."""
-    # This function remains the same as before
+def handle_output(results: list, output_file: str | None, query_name: str, output_format: str):
+    """Handles formatting and saving/printing the results with format selection."""
     output_formatter = OutputFormatter()
+    formatted = ''
+    if output_format == 'json':
+        formatted = output_formatter.format_as_json(results)
+    elif output_format == 'csv':
+        formatted = output_formatter.format_as_csv(results)
+    elif output_format == 'tsv':
+        formatted = output_formatter.format_as_tsv(results)
+    elif output_format == 'stdout':
+        # Pretty table to console
+        if results:
+            print("\n--- Query Results ---")
+            output_formatter.format_as_console_table(results)
+        else:
+            print("No results to display.")
+        return
+    else:
+        print(f"Unknown output format: {output_format}", file=sys.stderr)
+        return
+
     if output_file:
         print(f"\nSaving results for '{query_name}' to {output_file}...")
         try:
@@ -84,17 +109,15 @@ def handle_output(results: list, output_file: str | None, query_name: str):
             if output_dir and not os.path.exists(output_dir):
                 print(f"Creating directory: {output_dir}")
                 os.makedirs(output_dir, exist_ok=True)
-            json_output = output_formatter.format_as_json(results)
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(json_output)
+            with open(output_file, 'w', encoding='utf-8', newline='') as f:
+                f.write(formatted)
             print(f"Successfully saved results to {output_file}")
         except IOError as e:
             print(f"Error: Could not write to file {output_file}: {e}", file=sys.stderr)
         except Exception as e:
             print(f"Error: An unexpected error occurred during output formatting or saving: {e}", file=sys.stderr)
-    elif results:
-        print("\n--- Query Results ---")
-        output_formatter.format_as_console_table(results)
+    elif formatted:
+        print(formatted)
 
 def main():
     """Main execution function."""
@@ -210,7 +233,8 @@ def main():
     # --- 3. Handle Output ---
     if results is not None:
         output_file_path = getattr(args, 'output', None)
-        handle_output(results, output_file_path, query_display_name)
+        output_format = getattr(args, 'format', 'stdout')
+        handle_output(results, output_file_path, query_display_name, output_format)
 
     print(f"\n--- {query_display_name} finished ---")
 
