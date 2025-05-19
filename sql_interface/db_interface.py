@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, Tuple
 class SQLInterface:
     """Handles database connection, query execution, and result fetching."""
 
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         """Initializes connection parameters from environment variables."""
         self.server: Optional[str] = os.getenv("SQL_SERVER")
         self.database: Optional[str] = os.getenv("DATABASE")
@@ -15,6 +15,7 @@ class SQLInterface:
         self.driver: str = os.getenv("SQL_DRIVER", "{SQL Server Native Client 10.0}")
         self.connection: Optional[pyodbc.Connection] = None
         self.cursor: Optional[pyodbc.Cursor] = None
+        self.debug = debug
 
     def __enter__(self):
         """Context manager entry point: establishes connection."""
@@ -54,13 +55,15 @@ class SQLInterface:
                 f"DATABASE={self.database};"
                 f"UID={self.username_sql};"
                 f"PWD={self.password};"
-                # Optional: Add connection timeout, MARS setting etc. here if needed
-                # f"Timeout=30;"
-                # f"MARS_Connection=yes;"
             )
-            # Set autocommit=False to manage transactions explicitly
+            if self.debug:
+                masked_pwd = '***' if self.password else None
+                print(f"[DEBUG] Connection string: DRIVER={self.driver};SERVER={self.server};DATABASE={self.database};UID={self.username_sql};PWD={masked_pwd}")
+                print("[DEBUG] Connecting to database...")
             self.connection = pyodbc.connect(connection_string, autocommit=False)
             self.cursor = self.connection.cursor()
+            if self.debug:
+                print("[DEBUG] Database connection established.")
             print("Successfully connected to the database.")
             return True
         except pyodbc.Error as ex:
@@ -88,10 +91,13 @@ class SQLInterface:
         if not self.connection or not self.cursor:
             print("Error: Not connected to the database. Cannot execute query.")
             return False
-
+        if self.debug:
+            print(f"[DEBUG] Executing query: {query}")
+            print(f"[DEBUG] With parameters: {params}")
         try:
-            # print(f"Executing Query: {query} with Params: {params}") # Uncomment for debugging
             self.cursor.execute(query, params)
+            if self.debug:
+                print("[DEBUG] Query executed.")
             return True
         except pyodbc.Error as ex:
             sqlstate = ex.args[0]
@@ -127,6 +133,8 @@ class SQLInterface:
             columns = [column[0] for column in self.cursor.description]
             # Fetch all rows from the cursor
             rows = self.cursor.fetchall()
+            if self.debug:
+                print(f"[DEBUG] Rows fetched: {len(rows)}")
             # Convert rows (list of tuples) to list of dictionaries
             return [dict(zip(columns, row)) for row in rows]
 
@@ -170,6 +178,8 @@ class SQLInterface:
 
     def close_connection(self) -> None:
         """Closes the database cursor and connection if they are open."""
+        if self.debug:
+            print("[DEBUG] Closing database connection and cursor...")
         if self.cursor:
             try:
                 self.cursor.close()
@@ -188,3 +198,5 @@ class SQLInterface:
                 print(f"Warning: Error closing connection: {ex}")
             finally:
                 self.connection = None # Ensure connection is None regardless of close success
+        if self.debug:
+            print("[DEBUG] Database connection closed.")
