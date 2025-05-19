@@ -3,6 +3,7 @@ from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 import sys
 import io # For potential string buffering
+import csv
 
 # Optional: Use tabulate for nicer console tables
 # Run: pip install tabulate
@@ -118,3 +119,47 @@ class OutputFormatter:
             print(row_line, file=stream)
 
         print(separator, file=stream)
+
+    @staticmethod
+    def format_as_csv(data: List[Dict[str, Any]], delimiter: str = ',', lineterminator: str = '\n') -> str:
+        """
+        Formats the data as CSV or TSV (by changing delimiter).
+        Returns the CSV/TSV as a string (including header row).
+        Handles date/datetime objects by converting to ISO strings.
+
+        Args:
+            data (List[Dict[str, Any]]): The query result data.
+            delimiter (str): The delimiter for separating values (default: ',').
+                             Use '\t' for tab-separated values (TSV).
+            lineterminator (str): The string used to terminate lines (default: '\n').
+
+        Returns:
+            str: The CSV/TSV formatted string representation of the data.
+        """
+        if not data:
+            return ''
+        headers = list(data[0].keys())
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output, fieldnames=headers, delimiter=delimiter, lineterminator=lineterminator, quoting=csv.QUOTE_MINIMAL
+        )
+        writer.writeheader()
+        for row in data:
+            # Convert date/datetime to ISO string for CSV/TSV
+            safe_row = {k: (v.isoformat() if isinstance(v, (datetime, date)) else v) for k, v in row.items()}
+            writer.writerow(safe_row)
+        return output.getvalue()
+
+    @staticmethod
+    def format_as_tsv(data: List[Dict[str, Any]]) -> str:
+        """
+        Formats the data as TSV (tab-separated values).
+        Returns the TSV as a string (including header row).
+
+        Args:
+            data (List[Dict[str, Any]]): The query result data.
+
+        Returns:
+            str: The TSV formatted string representation of the data.
+        """
+        return OutputFormatter.format_as_csv(data, delimiter='\t')

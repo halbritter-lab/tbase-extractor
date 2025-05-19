@@ -38,8 +38,10 @@ Key Libraries Used:
     *   Query patient data by `FirstName`, `LastName`, and `DateOfBirth`. (Easily extensible with more templates).
 *   **Flexible Output:**
     *   Prints results to the console in a formatted table (`tabulate` preferred).
-    *   Saves results to a specified JSON file.
-*   **User-Friendly CLI:** Uses `argparse` with subparsers (`list-tables`, `query`) for clear command structure.
+    *   Saves results to a specified file in **JSON**, **CSV**, or **TSV** format (see `--format`).
+    *   Use `--format` to select output type: `json`, `csv`, `tsv`, or `stdout` (pretty table to console).
+    *   If `--output` is not given, formatted output is printed to the console.
+*   **User-Friendly CLI:** Uses `argparse` with subparsers (`list-tables`, `query`) for clear command structure. Now supports `--format` for output type selection.
 *   **Date Handling:** Validates date input format and correctly serializes date/datetime objects for JSON output.
 *   **Error Handling:** Includes basic error handling for connection issues, query execution, template loading, and file I/O.
 
@@ -105,6 +107,11 @@ Run the script from your terminal within the project's root directory. Use subpa
     python main.py query -q patient-details -i 12345 -o output/patient_12345.json
     ```
 
+*   **Query Patient by ID (CSV Output):**
+    ```bash
+    python main.py query -q patient-details -i 12345 -f csv -o output/patient_12345.csv
+    ```
+
 *   **Query Patient by Name and DOB (Console Output):**
     ```bash
     python main.py query --query-name patient-by-name-dob --first-name John --last-name Doe --dob 1990-05-20
@@ -115,6 +122,11 @@ Run the script from your terminal within the project's root directory. Use subpa
 *   **Query Patient by Name and DOB (JSON Output):**
     ```bash
     python main.py query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -o output/jane_smith_data.json
+    ```
+
+*   **Query Patient by Name and DOB (TSV Output):**
+    ```bash
+    python main.py query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -f tsv -o output/jane_smith_data.tsv
     ```
 
 ## Adding New Queries
