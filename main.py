@@ -27,6 +27,11 @@ def setup_arg_parser():
         description="Connects to a SQL database to execute predefined queries using templates.",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    parser.add_argument(
+        '--debug', '-v',
+        action='store_true',
+        help='Enable verbose debug output.'
+    )
     subparsers = parser.add_subparsers(
         dest='action', help='The main action to perform.', required=True, metavar='ACTION'
     )
@@ -78,6 +83,11 @@ def setup_arg_parser():
         default='stdout',
         help='Output format: json, csv, tsv, or stdout (pretty table to console). Default: stdout.'
     )
+    parser_query.add_argument(
+        '--debug', '-v',
+        action='store_true',
+        help='Enable verbose debug output.'
+    )
     return parser
 
 def handle_output(results: list, output_file: str | None, query_name: str, output_format: str):
@@ -123,6 +133,11 @@ def main():
     """Main execution function."""
     parser = setup_arg_parser()
     args = parser.parse_args()
+
+    debug = getattr(args, 'debug', False)
+
+    if debug:
+        print(f"[DEBUG] Parsed arguments: {args}")
 
     query_manager = QueryManager(SQL_TEMPLATES_DIR)
     sql: str = ""
@@ -187,22 +202,32 @@ def main():
         print(f"An unexpected error occurred during query preparation: {e}", file=sys.stderr)
         sys.exit(1)
 
+    if debug:
+        print(f"[DEBUG] SQL to execute:\n{sql}")
+        print(f"[DEBUG] Query parameters: {params}")
+
     # --- 2. Connect, Execute, Fetch ---
     results = None
     print(f"\nAttempting to execute: {query_display_name}")
     if params:
          print(f"With parameters: {params}") # DOB will print as YYYY-MM-DD
+    if debug:
+        print("[DEBUG] Attempting database connection...")
 
     try:
-        with SQLInterface() as db:
+        with SQLInterface(debug=debug) as db:
             if not db.connection:
                 print("Aborting: Database connection failed.", file=sys.stderr)
                 sys.exit(1)
 
             if db.execute_query(sql, params):
+                if debug:
+                    print("[DEBUG] Query executed successfully. Fetching results...")
                 fetched_data = db.fetch_results()
                 if fetched_data is not None:
                     results = fetched_data
+                    if debug:
+                        print(f"[DEBUG] Number of rows fetched: {len(results)}")
                     if not results:
                          # --- UPDATED 'no results' message ---
                          if args.action == 'query':
