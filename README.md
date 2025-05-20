@@ -160,6 +160,25 @@ The script includes handling for:
 *   Incorrect date format for the `--dob` argument.
 *   Errors during JSON serialization or file output.
 
+## Recent Updates
+
+### May 2025
+- **Improved Help Functionality**: Enhanced the `--help` command to provide clearer and more detailed descriptions for all arguments and subcommands.
+- **Bug Fixes**: Resolved an issue where `%` characters in help strings caused errors in the `argparse` module.
+- **Output Enhancements**: Added support for saving query results in multiple formats (JSON, CSV, TSV) with improved formatting options.
+
+### Usage Example Updates
+- **Query Patient by Name and DOB**:
+  ```powershell
+  python -m tbase_extractor query --query-name patient-by-name-dob --first-name Jane --last-name Doe --dob 1990-05-20 -o output/patient_data.json
+  ```
+  *(Note: Ensure the date format is `YYYY-MM-DD`.)*
+
+- **List Available Tables**:
+  ```powershell
+  python -m tbase_extractor list-tables
+  ```
+
 ## License
 
 MIT

@@ -30,14 +30,14 @@ def setup_arg_parser():
     parser.add_argument(
         '--debug', '-v',
         action='store_true',
-        help='Enable verbose debug output.'
+        help='Enable verbose debug output for troubleshooting.'
     )
     subparsers = parser.add_subparsers(
-        dest='action', help='The main action to perform.', required=True, metavar='ACTION'
+        dest='action', help='The main action to perform. Use one of the subcommands below.', required=True, metavar='ACTION'
     )
 
     # --- Sub-command: list-tables ---
-    subparsers.add_parser('list-tables', help='List all available base tables.')
+    subparsers.add_parser('list-tables', help='List all available base tables in the database.')
 
     # --- Sub-command: query ---
     parser_query = subparsers.add_parser('query', help='Execute a predefined query template.')
@@ -54,7 +54,7 @@ def setup_arg_parser():
     )
     parser_query.add_argument(
         '--patient-id', '-i', type=int, metavar='ID',
-        help='Patient ID (required for \'get_patient_by_id\' query).'
+        help='Patient ID (required for the \"get_patient_by_id\" query).'
     )
     parser_query.add_argument(
         '--first-name', '-fn', type=str, metavar='NAME',
@@ -66,11 +66,11 @@ def setup_arg_parser():
     )
     parser_query.add_argument(
         '--dob', '-d', type=str, metavar='YYYY-MM-DD',
-        help=f'Patient Date of Birth (Geburtsdatum) in {DOB_FORMAT} format.'
+        help='Patient Date of Birth (Geburtsdatum) in %%Y-%%m-%%d format.'
     )
     parser_query.add_argument(
         '--output', '-o', type=str, metavar='FILE_PATH',
-        help='Optional path to save results as a JSON file.'
+        help='Optional path to save results as a JSON, CSV, or TSV file.'
     )
     
     # Fuzzy search specific arguments
@@ -93,11 +93,6 @@ def setup_arg_parser():
         choices=['json', 'csv', 'tsv', 'stdout'],
         default=None,
         help='Output format: json, csv, tsv, or stdout (pretty table to console). Inferred from -o extension if not set.'
-    )
-    parser_query.add_argument(
-        '--debug', '-v',
-        action='store_true',
-        help='Enable verbose debug output.'
     )
     parser_query.add_argument('--table-name', '-tn',
         required=False,
