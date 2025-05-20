@@ -51,14 +51,14 @@ class OutputFormatter:
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
     @staticmethod
-    def format_as_json(data: List[Dict[str, Any]], indent: Optional[int] = 4) -> str:
+    def format_as_json(data: List[Any], indent: Optional[int] = 4) -> str:
         """
         Formats the data into a JSON string.
 
         Handles date/datetime objects using the custom serializer.
 
         Args:
-            data (List[Dict[str, Any]]): The query result data.
+            data (List[Any]): The query result data.
             indent (Optional[int]): The indentation level for pretty-printing JSON.
                                     Set to None for compact output. Defaults to 4.
 
@@ -71,6 +71,10 @@ class OutputFormatter:
             ValueError: If there are issues during JSON encoding.
         """
         try:
+            # Convert MatchCandidate objects to dictionaries if present
+            if data and isinstance(data[0], MatchCandidate):
+                data = [OutputFormatter._match_candidate_to_dict(candidate) for candidate in data]
+
             return json.dumps(data, default=OutputFormatter._datetime_serializer, indent=indent)
         except (TypeError, ValueError) as e:
             print(f"Error during JSON serialization: {e}", file=sys.stderr)
