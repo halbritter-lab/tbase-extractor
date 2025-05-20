@@ -7,9 +7,16 @@ from datetime import datetime, date
 from dotenv import load_dotenv
 import logging
 from .utils import resolve_templates_dir
-from .sql_interface.db_interface import SQLInterface
-from .sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
-from .sql_interface.output_formatter import OutputFormatter
+from tbase_extractor.sql_interface.db_interface import SQLInterface
+from tbase_extractor.sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
+from tbase_extractor.sql_interface.output_formatter import OutputFormatter
+from .matching import FuzzyMatcher, PatientSearchStrategy
+from .matching import FuzzyMatcher, PatientSearchStrategy
+
+# Dynamically add the project root to PYTHONPATH
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 load_dotenv()
 
@@ -23,47 +30,63 @@ def setup_arg_parser():
     parser.add_argument(
         '--debug', '-v',
         action='store_true',
-        help='Enable verbose debug output.'
+        help='Enable verbose debug output for troubleshooting.'
     )
     subparsers = parser.add_subparsers(
-        dest='action', help='The main action to perform.', required=True, metavar='ACTION'
+        dest='action', help='The main action to perform. Use one of the subcommands below.', required=True, metavar='ACTION'
     )
 
     # --- Sub-command: list-tables ---
-    subparsers.add_parser('list-tables', help='List all available base tables.')
+    subparsers.add_parser('list-tables', help='List all available base tables in the database.')
 
     # --- Sub-command: query ---
     parser_query = subparsers.add_parser('query', help='Execute a predefined query template.')
-    parser_query.add_argument(        '--query-name', '-q',
+    parser_query.add_argument('--query-name', '-q',
         required=True,
-        choices=['get_patient_by_id', 'patient-by-name-dob'],
+        choices=['get_patient_by_id', 'patient-by-name-dob', 'patient-fuzzy-search', 'get-table-columns'],
         help="REQUIRED. The name of the predefined query template to execute.\n"
              "Must correspond to a file in the 'sql_templates' directory.\n"
              "Examples:\n"
              "  'get_patient_by_id': Get details for a specific patient by ID.\n"
-             "  'patient-by-name-dob': Get patient details by Name and Date of Birth."
+             "  'patient-by-name-dob': Get patient details by Name and Date of Birth.\n"
+             "  'patient-fuzzy-search': Search for patients with fuzzy name matching and year tolerance.\n"
+             "  'get-table-columns': Get column details for a specific table and schema."
     )
     parser_query.add_argument(
         '--patient-id', '-i', type=int, metavar='ID',
-        help='Patient ID (required for \'get_patient_by_id\' query).'
+        help='Patient ID (required for the \"get_patient_by_id\" query).'
     )
     parser_query.add_argument(
         '--first-name', '-fn', type=str, metavar='NAME',
-        help='Patient First Name (Vorname) (required for \'patient-by-name-dob\' query).'
+        help='Patient First Name (Vorname) for exact or fuzzy matching.'
     )
     parser_query.add_argument(
         '--last-name', '-ln', type=str, metavar='NAME',
-        help='Patient Last Name (Name) (required for \'patient-by-name-dob\' query).'
+        help='Patient Last Name (Name) for exact or fuzzy matching.'
     )
     parser_query.add_argument(
         '--dob', '-d', type=str, metavar='YYYY-MM-DD',
-        help=f'Patient Date of Birth (Geburtsdatum) in {DOB_FORMAT} format '
-             f'(required for \'patient-by-name-dob\' query).'
+        help='Patient Date of Birth (Geburtsdatum) in %%Y-%%m-%%d format.'
     )
     parser_query.add_argument(
         '--output', '-o', type=str, metavar='FILE_PATH',
-        help='Optional path to save results as a JSON file.'
+        help='Optional path to save results as a JSON, CSV, or TSV file.'
     )
+    
+    # Fuzzy search specific arguments
+    parser_query.add_argument(
+        '--fuzzy-threshold', type=float, default=0.85, metavar='0.0-1.0',
+        help='Similarity threshold for fuzzy name matching (0.0 to 1.0, default: 0.85).'
+    )
+    parser_query.add_argument(
+        '--dob-year-tolerance', type=int, default=1, metavar='YEARS',
+        help='Maximum year difference allowed for DOB matching (default: 1).'
+    )
+    parser_query.add_argument(
+        '--min-match-score', type=float, default=0.3, metavar='SCORE',
+        help='Minimum overall match score required (0.0 to 1.0, default: 0.3).'
+    )
+
     parser_query.add_argument(
         '--format', '-f',
         type=str,
@@ -71,11 +94,12 @@ def setup_arg_parser():
         default=None,
         help='Output format: json, csv, tsv, or stdout (pretty table to console). Inferred from -o extension if not set.'
     )
-    parser_query.add_argument(
-        '--debug', '-v',
-        action='store_true',
-        help='Enable verbose debug output.'
-    )
+    parser_query.add_argument('--table-name', '-tn',
+        required=False,
+        help="The name of the table to query (e.g., 'Patient').")
+    parser_query.add_argument('--table-schema', '-ts',
+        required=False,
+        help="The schema of the table to query (e.g., 'dbo').")
     return parser
 
 def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None):
@@ -165,52 +189,75 @@ def main():
     params = ()
     query_info = None
     query_display_name = args.action
+    results = None
+    is_fuzzy_search = False  # Initialize the variable here
 
     try:
         if args.action == 'list-tables':
             query_info = query_manager.get_list_tables_query()
             query_display_name = 'List Tables'
+            sql, params = query_info
 
         elif args.action == 'query':
             query_display_name = f"Query '{args.query_name}'"
+            is_fuzzy_search = args.query_name == 'patient-fuzzy-search'
 
             if args.query_name == 'get_patient_by_id':
                 if args.patient_id is None:
                     logger.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
                     parser.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
                 query_info = query_manager.get_patient_by_id_query(args.patient_id)
+                sql, params = query_info
 
             elif args.query_name == 'patient-by-name-dob':
                 if not all([args.first_name, args.last_name, args.dob]):
                     logger.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED for query 'patient-by-name-dob'.")
                     parser.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED "
-                                 "for query 'patient-by-name-dob'.")
+                             "for query 'patient-by-name-dob'.")
                 dob_object = None
                 try:
                     dob_object = datetime.strptime(args.dob, DOB_FORMAT).date()
                 except ValueError:
                     logger.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
                     parser.error(f"Invalid Date of Birth format for --dob/-d. "
-                                 f"Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
-                query_info = query_manager.get_patient_by_name_dob_query(
-                    args.first_name, args.last_name, dob_object
-                )
+                             f"Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
+                query_info = query_manager.get_patient_by_name_dob_query(args.first_name, args.last_name, dob_object)
+                sql, params = query_info
+
+            elif args.query_name == 'patient-fuzzy-search':
+                if not any([args.first_name, args.last_name, args.dob]):
+                    logger.error("At least one search parameter (--first-name/-fn, --last-name/-ln, or --dob/-d) is REQUIRED for fuzzy search.")
+                    parser.error("At least one search parameter (--first-name/-fn, --last-name/-ln, or --dob/-d) is REQUIRED for fuzzy search.")
+
+                # Parse DOB if provided
+                dob_object = None
+                if args.dob:
+                    try:
+                        dob_object = datetime.strptime(args.dob, DOB_FORMAT).date()
+                    except ValueError:
+                        logger.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
+                        parser.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
+
+                # Initialize fuzzy search components
+                search_params = {
+                    'first_name': args.first_name,
+                    'last_name': args.last_name,
+                    'dob': dob_object
+                }
+                
+                query_display_name = "Fuzzy Patient Search"
+
+            elif args.query_name == 'get-table-columns':
+                if not args.table_name or not args.table_schema:
+                    logger.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
+                    parser.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
+                query_info = query_manager.get_table_columns_query(args.table_name, args.table_schema)
+                sql, params = query_info
+
             else:
                 logger.error(f"Query name '{args.query_name}' is not recognized or implemented.")
                 print(f"Error: Query name '{args.query_name}' is not recognized or implemented.", file=sys.stderr)
                 sys.exit(1)
-
-            if query_info is None:
-                logger.error(f"Failed to load or prepare query '{args.query_name}'.")
-                print(f"Error: Failed to load or prepare query '{args.query_name}'.", file=sys.stderr)
-                sys.exit(1)
-
-        if query_info is None:
-            logger.error(f"Could not determine query for action '{args.action}'.")
-            print(f"Error: Could not determine query for action '{args.action}'.", file=sys.stderr)
-            sys.exit(1)
-
-        sql, params = query_info
 
     except QueryTemplateNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -219,13 +266,12 @@ def main():
         print(f"An unexpected error occurred during query preparation: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if debug:
+    if debug and not is_fuzzy_search:
         logger.debug(f"SQL to execute:\n{sql}")
         logger.debug(f"Query parameters: {params}")
 
-    results = None
     logger.info(f"Attempting to execute: {query_display_name}")
-    if params:
+    if not is_fuzzy_search and params:
         logger.info(f"With parameters: {params}")
     if debug:
         logger.debug("Attempting database connection...")
@@ -237,32 +283,62 @@ def main():
                 print("Aborting: Database connection failed.", file=sys.stderr)
                 sys.exit(1)
 
-            if db.execute_query(sql, params):
-                if debug:
-                    logger.debug("Query executed successfully. Fetching results...")
-                fetched_data = db.fetch_results()
-                if fetched_data is not None:
-                    results = fetched_data
-                    if debug:
-                        logger.debug(f"Number of rows fetched: {len(results)}")
+            if args.action == 'query':
+                if args.query_name == 'patient-fuzzy-search':
+                    # For fuzzy search, use the PatientSearchStrategy
+                    fuzzy_matcher = FuzzyMatcher(
+                        string_similarity_threshold=args.fuzzy_threshold,
+                        date_year_tolerance=args.dob_year_tolerance
+                    )
+                    strategy = PatientSearchStrategy(db, query_manager, fuzzy_matcher)
+                    results = strategy.search(search_params, min_overall_score=args.min_match_score)
                     if not results:
-                        if args.action == 'query':
-                            if args.query_name == 'get_patient_by_id':
-                                logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
-                            elif args.query_name == 'patient-by-name-dob':
-                                logger.info(f"Query executed successfully, but no data found for "
-                                      f"FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
-                            else:
-                                logger.info("Query executed successfully, but returned no results.")
-                        else:
-                            logger.info("Query executed successfully, but returned no results.")
+                        logger.info("Fuzzy search completed, but no matching patients were found.")
+                    else:
+                        logger.info(f"Fuzzy search found {len(results)} potential matches.")
                 else:
-                    logger.error("Error occurred while fetching results.")
-                    print("Error occurred while fetching results.", file=sys.stderr)
-            else:
-                logger.error("Aborting: Query execution failed.")
-                print("Aborting: Query execution failed.", file=sys.stderr)
-                sys.exit(1)
+                    # For regular queries, use the normal query execution path
+                    if db.execute_query(sql, params):
+                        if debug:
+                            logger.debug("Query executed successfully. Fetching results...")
+                        fetched_data = db.fetch_results()
+                        if fetched_data is not None:
+                            results = fetched_data
+                            if debug:
+                                logger.debug(f"Number of rows fetched: {len(results)}")
+                            if not results:
+                                if args.query_name == 'get_patient_by_id':
+                                    logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
+                                elif args.query_name == 'patient-by-name-dob':
+                                    logger.info(f"Query executed successfully, but no data found for "
+                                          f"FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
+                                else:
+                                    logger.info("Query executed successfully, but returned no results.")
+                        else:
+                            logger.error("Error occurred while fetching results.")
+                            print("Error occurred while fetching results.", file=sys.stderr)
+                    else:
+                        logger.error("Aborting: Query execution failed.")
+                        print("Aborting: Query execution failed.", file=sys.stderr)
+                        sys.exit(1)
+            else:  # list-tables
+                if db.execute_query(sql, params):
+                    if debug:
+                        logger.debug("Query executed successfully. Fetching results...")
+                    fetched_data = db.fetch_results()
+                    if fetched_data is not None:
+                        results = fetched_data
+                        if debug:
+                            logger.debug(f"Number of rows fetched: {len(results)}")
+                        if not results:
+                            logger.info("Query executed successfully, but returned no results.")
+                    else:
+                        logger.error("Error occurred while fetching results.")
+                        print("Error occurred while fetching results.", file=sys.stderr)
+                else:
+                    logger.error("Aborting: Query execution failed.")
+                    print("Aborting: Query execution failed.", file=sys.stderr)
+                    sys.exit(1)
 
     except pyodbc.Error as db_err:
         logger.exception(f"A database error occurred: {db_err}")

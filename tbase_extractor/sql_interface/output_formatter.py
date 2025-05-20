@@ -2,8 +2,9 @@ import json
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 import sys
-import io # For potential string buffering
+import io  # For potential string buffering
 import csv
+from ..matching.models import MatchCandidate, MatchInfo
 
 # Optional: Use tabulate for nicer console tables
 try:
@@ -18,6 +19,27 @@ class OutputFormatter:
     """Formats query results (list of dictionaries) for display or saving."""
 
     @staticmethod
+    def _match_candidate_to_dict(candidate: MatchCandidate) -> Dict[str, Any]:
+        """Convert a MatchCandidate to a dictionary suitable for output."""
+        result = {
+            'overall_score': candidate.overall_score,
+            'primary_match_type': candidate.primary_match_type,
+            **candidate.db_record
+        }
+        
+        # Add match details for each field
+        for info in candidate.match_fields_info:
+            field_prefix = info.field_name
+            result[f"{field_prefix}_input_value"] = info.input_value
+            result[f"{field_prefix}_db_value"] = info.db_value
+            result[f"{field_prefix}_match_type"] = info.match_type
+            result[f"{field_prefix}_similarity"] = info.similarity_score
+            if info.details:
+                result[f"{field_prefix}_details"] = info.details
+
+        return result
+
+    @staticmethod
     def _datetime_serializer(obj: Any) -> str:
         """
         Custom serializer for converting datetime.datetime and datetime.date
@@ -29,14 +51,14 @@ class OutputFormatter:
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
     @staticmethod
-    def format_as_json(data: List[Dict[str, Any]], indent: Optional[int] = 4) -> str:
+    def format_as_json(data: List[Any], indent: Optional[int] = 4) -> str:
         """
         Formats the data into a JSON string.
 
         Handles date/datetime objects using the custom serializer.
 
         Args:
-            data (List[Dict[str, Any]]): The query result data.
+            data (List[Any]): The query result data.
             indent (Optional[int]): The indentation level for pretty-printing JSON.
                                     Set to None for compact output. Defaults to 4.
 
@@ -49,6 +71,10 @@ class OutputFormatter:
             ValueError: If there are issues during JSON encoding.
         """
         try:
+            # Convert MatchCandidate objects to dictionaries if present
+            if data and isinstance(data[0], MatchCandidate):
+                data = [OutputFormatter._match_candidate_to_dict(candidate) for candidate in data]
+
             return json.dumps(data, default=OutputFormatter._datetime_serializer, indent=indent)
         except (TypeError, ValueError) as e:
             print(f"Error during JSON serialization: {e}", file=sys.stderr)
@@ -56,108 +82,58 @@ class OutputFormatter:
             raise
 
     @staticmethod
-    def format_as_console_table(data: List[Dict[str, Any]], stream=sys.stdout) -> None:
-        """
-        Prints the data as a formatted table to the specified stream (default: stdout).
-
-        Uses the 'tabulate' library if available for better formatting, otherwise
-        falls back to a basic, manually aligned format.
-
-        Args:
-            data (List[Dict[str, Any]]): The query result data.
-            stream: The output stream (e.g., sys.stdout, io.StringIO). Defaults to sys.stdout.
-        """
+    def format_as_csv(data: List[Dict[str, Any]]) -> str:
+        """Formats the data into a CSV string."""
         if not data:
-            print("No results to display.", file=stream)
-            return
+            return ""
 
-        # Assume all dictionaries have the same keys based on the first row
-        # This is generally true for SQL query results.
-        headers = list(data[0].keys())
-
-        if HAS_TABULATE:
-            # tabulate expects a list of lists (rows) + headers
-            # It handles various data types including None reasonably well.
-            rows = [[row.get(header) for header in headers] for row in data]
-            try:
-                # 'grid' format looks nice; other options: 'psql', 'simple', 'rst'
-                print(tabulate(rows, headers=headers, tablefmt="grid", missingval="NULL"), file=stream)
-            except Exception as e:
-                # Catch potential errors within tabulate itself
-                print(f"\nError using tabulate: {e}. Falling back to basic format.", file=stream)
-                OutputFormatter._print_basic_table(data, headers, stream)
-
-        else:
-            # Fallback to basic formatting if tabulate is not installed
-            OutputFormatter._print_basic_table(data, headers, stream)
-
-    @staticmethod
-    def _print_basic_table(data: List[Dict[str, Any]], headers: List[str], stream=sys.stdout) -> None:
-        """Internal helper for basic manual table printing."""
-        print("\n--- Basic Table Output ---", file=stream)
-
-        # Calculate column widths (simple approach)
-        col_widths = {header: len(header) for header in headers}
-        for row in data:
-            for header in headers:
-                col_widths[header] = max(col_widths[header], len(str(row.get(header, 'NULL'))))
-
-        # Create separator line
-        separator = "+-" + "-+-".join("-" * col_widths[h] for h in headers) + "-+"
-
-        # Print header
-        header_line = "| " + " | ".join(h.ljust(col_widths[h]) for h in headers) + " |"
-        print(separator, file=stream)
-        print(header_line, file=stream)
-        print(separator, file=stream)
-
-        # Print rows
-        for row in data:
-            row_line = "| " + " | ".join(str(row.get(h, 'NULL')).ljust(col_widths[h]) for h in headers) + " |"
-            print(row_line, file=stream)
-
-        print(separator, file=stream)
-
-    @staticmethod
-    def format_as_csv(data: List[Dict[str, Any]], delimiter: str = ',', lineterminator: str = '\n') -> str:
-        """
-        Formats the data as CSV or TSV (by changing delimiter).
-        Returns the CSV/TSV as a string (including header row).
-        Handles date/datetime objects by converting to ISO strings.
-
-        Args:
-            data (List[Dict[str, Any]]): The query result data.
-            delimiter (str): The delimiter for separating values (default: ',').
-                             Use '\t' for tab-separated values (TSV).
-            lineterminator (str): The string used to terminate lines (default: '\n').
-
-        Returns:
-            str: The CSV/TSV formatted string representation of the data.
-        """
-        if not data:
-            return ''
-        headers = list(data[0].keys())
         output = io.StringIO()
-        writer = csv.DictWriter(
-            output, fieldnames=headers, delimiter=delimiter, lineterminator=lineterminator, quoting=csv.QUOTE_MINIMAL
-        )
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
         writer.writeheader()
-        for row in data:
-            # Convert date/datetime to ISO string for CSV/TSV
-            safe_row = {k: (v.isoformat() if isinstance(v, (datetime, date)) else v) for k, v in row.items()}
-            writer.writerow(safe_row)
+        writer.writerows(data)
         return output.getvalue()
 
     @staticmethod
     def format_as_tsv(data: List[Dict[str, Any]]) -> str:
-        """
-        Formats the data as TSV (tab-separated values).
-        Returns the TSV as a string (including header row).
+        """Formats the data into a TSV string."""
+        if not data:
+            return ""
 
-        Args:
-            data (List[Dict[str, Any]]): The query result data.
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=data[0].keys(), delimiter='\t')
+        writer.writeheader()
+        writer.writerows(data)
+        return output.getvalue()
 
-        Returns:
-            str: The TSV formatted string representation of the data.
-        """
-        return OutputFormatter.format_as_csv(data, delimiter='\t')
+    @staticmethod
+    def format_as_console_table(data: List[Any], stream=sys.stdout) -> None:
+        """Formats data as a console table and writes to the given stream."""
+        if not data:
+            print("No data to display.", file=stream)
+            return
+
+        # Check if data contains MatchCandidate objects
+        if isinstance(data[0], MatchCandidate):
+            headers = ["Name", "DOB", "Score", "Match Type"]
+            rows = [
+                [
+                    candidate.db_record.get("Name"),
+                    candidate.db_record.get("Geburtsdatum"),
+                    candidate.overall_score,
+                    candidate.primary_match_type
+                ]
+                for candidate in data
+            ]
+        else:
+            headers = list(data[0].keys())
+            rows = [list(row.values()) for row in data]
+
+        if HAS_TABULATE:
+            from tabulate import tabulate
+            table = tabulate(rows, headers=headers, tablefmt="grid")
+            print(table, file=stream)
+        else:
+            # Fallback to basic formatting
+            print("\t".join(headers), file=stream)
+            for row in data:
+                print("\t".join(str(row.get(h, "")) for h in headers), file=stream)
