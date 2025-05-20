@@ -1,14 +1,13 @@
--- Query that finds a patient by their first name, last name, and date of birth
-SELECT 
-    p.PatientID,
-    p.Vorname AS FirstName,
-    p.Name AS LastName,
-    p.Geburtsdatum AS DateOfBirth,
-    p.Geschlecht AS Gender,
-    p.PLZ AS PostalCode,
-    p.Ort AS City
-FROM dbo.Patient p
-WHERE 
-    p.Vorname = ? 
-    AND p.Name = ?
-    AND p.Geburtsdatum = ?
+-- Selects all columns for patients matching First Name, Last Name, and Date of Birth.
+-- Uses parameter placeholders (?) to prevent SQL injection.
+-- ** IMPORTANT: Verify 'dbo.Patient' schema/table name and column names
+-- ** ('Vorname', 'Name', 'Geburtsdatum') match your actual database structure. **
+SELECT
+    T1.*
+FROM
+    dbo.Patient AS T1
+WHERE
+    T1.Vorname = ?       -- Parameter 1: First Name
+    AND T1.Name = ?      -- Parameter 2: Last Name
+    AND T1.Geburtsdatum = ? -- Parameter 3: Date of Birth
+;
