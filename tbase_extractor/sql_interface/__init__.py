@@ -1,4 +1,5 @@
 """SQL interface package for tbase-extractor"""
+import sys
 
 from .db_interface import SQLInterface
 from .query_manager import QueryManager
@@ -19,3 +20,5 @@ __all__ = [
     'InvalidQueryParametersError',
     'OutputFormatter'
 ]
+
+print("[DEBUG sql_interface] Package initialized", file=sys.stderr)

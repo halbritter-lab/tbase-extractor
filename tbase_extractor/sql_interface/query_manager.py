@@ -1,48 +1,53 @@
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List, Union
+from pathlib import Path
 from .db_interface import SQLInterface
 from .exceptions import QueryTemplateNotFoundError
 
 class QueryManager:
     """Manages SQL queries, including template loading and parameter substitution."""
 
-    def __init__(self, templates_dir: Optional[str] = None, debug: bool = False):
+    def __init__(self, templates_dir: Union[str, Path], debug: bool = False):
         """
         Initialize QueryManager with a templates directory and debug flag.
 
         Args:
-            templates_dir (Optional[str]): Path to directory containing SQL templates.
-                If None, tries to find templates relative to this file.
+            templates_dir (Union[str, Path]): Path to directory containing SQL templates.
             debug (bool): Whether to print debug information.
+
+        Raises:
+            ValueError: If templates_dir is None, not a string/Path, or not a valid directory.
         """
-        self.templates_dir = templates_dir or self._find_templates_dir()
-        self.debug = debug
-        if self.debug:
-            print(f"[DEBUG] Templates directory: {self.templates_dir}")
-
-    def _find_templates_dir(self) -> str:
-        """Find the SQL templates directory relative to this file."""
-        # This file is in sql_interface/, templates should be in parent/sql_templates/
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(current_dir)
-        templates_dir = os.path.join(parent_dir, "sql_templates")
+        if templates_dir is None:
+            raise ValueError("templates_dir cannot be None")
+            
+        # Convert to string if it's a Path or similar object
+        templates_dir_str = str(templates_dir)
         
-        if not os.path.isdir(templates_dir):
-            raise QueryTemplateNotFoundError(
-                f"SQL templates directory not found at {templates_dir}"
-            )
-        return templates_dir
-
+        # Strict validation
+        if not os.path.exists(templates_dir_str):
+            raise ValueError(f"templates_dir path does not exist: {templates_dir_str}")
+        if not os.path.isdir(templates_dir_str):
+            raise ValueError(f"templates_dir is not a directory: {templates_dir_str}")
+            
+        self.templates_dir = templates_dir_str
+        self.debug = debug
+        
+        if self.debug:
+            template_files = [f for f in os.listdir(self.templates_dir) if f.endswith('.sql')]
+            print(f"[DEBUG QueryManager] Initialized with templates_dir: '{self.templates_dir}'")
+            print(f"[DEBUG QueryManager] Available SQL templates: {template_files}")
+            
     def load_query_template(self, template_name: str) -> str:
         """
         Load a SQL query template from file.
-
+        
         Args:
             template_name (str): Name of template file without .sql extension
-
+            
         Returns:
             str: The SQL query template string
-
+            
         Raises:
             QueryTemplateNotFoundError: If template file doesn't exist
         """
@@ -55,19 +60,24 @@ class QueryManager:
                 f"SQL template file not found: {template_path}"
             )
 
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template = f.read()
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = f.read()
 
-        if self.debug:
-            print(f"[DEBUG] Loaded template '{template_name}'")
-        return template
+            if self.debug:
+                print(f"[DEBUG QueryManager] Loaded template '{template_name}'")
+            return template
+        except IOError as e:
+            raise QueryTemplateNotFoundError(
+                f"Error reading SQL template file '{template_path}': {e}"
+            )
 
     def execute_template_query(
         self, 
         db: SQLInterface,
         template_name: str,
         params: Dict[str, Any] = None
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]] | None:
         """
         Execute a query from a template with parameters.
 
@@ -81,19 +91,47 @@ class QueryManager:
                                           or None if query fails
         """
         try:
+            if self.debug:
+                print(f"[DEBUG QueryManager] Executing template '{template_name}'")
+                if params:
+                    print(f"[DEBUG QueryManager] With parameters: {params}")
+
             query = self.load_query_template(template_name)
-            if params:
-                # For pyodbc, convert dict params to tuple in correct order
-                param_values = tuple(params.values())
-            else:
-                param_values = ()
+            param_values = tuple(params.values()) if params else ()
 
             if db.execute_query(query, param_values):
-                return db.fetch_results()
+                results = db.fetch_results()
+                if self.debug and results is not None:
+                    print(f"[DEBUG QueryManager] Query returned {len(results)} rows")
+                return results
+            
+            if self.debug:
+                print("[DEBUG QueryManager] Query execution failed")
             return None
+
         except QueryTemplateNotFoundError as e:
             print(f"Error: {e}")
             return None
         except Exception as e:
             print(f"Error executing template query: {e}")
             return None
+
+    def get_list_tables_query(self) -> tuple[str, tuple]:
+        """Get a query to list available tables."""
+        return self.load_query_template('list_tables'), tuple()
+
+    def get_patient_by_id_query(self, patient_id: int) -> tuple[str, tuple]:
+        """Get a query to find a patient by ID."""
+        return self.load_query_template('get_patient_by_id'), (patient_id,)
+
+    def get_patient_by_name_dob_query(
+        self, 
+        first_name: str, 
+        last_name: str, 
+        dob_date
+    ) -> tuple[str, tuple]:
+        """Get a query to find a patient by name and date of birth."""
+        return (
+            self.load_query_template('get_patient_by_name_dob'),
+            (first_name, last_name, dob_date)
+        )

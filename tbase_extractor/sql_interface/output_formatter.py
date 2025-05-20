@@ -1,4 +1,3 @@
-from sql_interface.output_formatter import *
 import json
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional

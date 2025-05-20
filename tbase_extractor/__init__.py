@@ -1,4 +1,10 @@
 """tbase_extractor package"""
+import logging
+
+# Configure a null handler by default
+logging.getLogger(__name__).addHandler(logging.NullHandler())
+
+# Expose public interface
 from . import sql_interface
 from .sql_interface import (
     SQLInterface,
@@ -9,7 +15,9 @@ from .sql_interface import (
     QueryExecutionError,
     InvalidQueryParametersError
 )
-from .main import setup_arg_parser, process_args, main
+from .main import main
+
+__version__ = "0.1.0"
 
 __all__ = [
     'sql_interface',
@@ -20,8 +28,10 @@ __all__ = [
     'DatabaseConnectionError',
     'QueryExecutionError',
     'InvalidQueryParametersError',
-    'main'
+    'main',
 ]
 
 if __name__ == '__main__':
+    import sys
+    print("[DEBUG] Running package as script (__init__.py)", file=sys.stderr)
     main()
