@@ -65,6 +65,16 @@ Key Libraries Used:
     pip install -r requirements.txt
     ```
     *(This installs `pyodbc`, `python-dotenv`, and `tabulate`)*
+4.  Install the package itself:
+    ```bash
+    pip install .
+    ```
+    Or for a development/editable install:
+    ```bash
+    pip install -e .
+    ```
+
+This will install the `tbase-extractor` command and all dependencies.
 
 ## Setup
 
@@ -82,51 +92,51 @@ Key Libraries Used:
 
 ## Usage
 
-Run the script from your terminal within the project's root directory. Use subparsers `list-tables` or `query` to specify the action.
+You can now run the tool from any directory:
 
 *   **Get Help:**
     ```bash
-    python main.py -h
-    python main.py list-tables -h
-    python main.py query -h
+    tbase-extractor --help
+    tbase-extractor list-tables --help
+    tbase-extractor query --help
     ```
 
 *   **List Available Tables:**
     ```bash
-    python main.py list-tables
+    tbase-extractor list-tables
     ```
 
 *   **Query Patient by ID (Console Output):**
     ```bash
-    python main.py query --query-name patient-details --patient-id 12345
+    tbase-extractor query --query-name patient-details --patient-id 12345
     ```
-    *(Alias: `python main.py query -q patient-details -i 12345`)*
+    *(Alias: `tbase-extractor query -q patient-details -i 12345`)*
 
 *   **Query Patient by ID (JSON Output):**
     ```bash
-    python main.py query -q patient-details -i 12345 -o output/patient_12345.json
+    tbase-extractor query -q patient-details -i 12345 -o output/patient_12345.json
     ```
 
 *   **Query Patient by ID (CSV Output):**
     ```bash
-    python main.py query -q patient-details -i 12345 -f csv -o output/patient_12345.csv
+    tbase-extractor query -q patient-details -i 12345 -f csv -o output/patient_12345.csv
     ```
 
 *   **Query Patient by Name and DOB (Console Output):**
     ```bash
-    python main.py query --query-name patient-by-name-dob --first-name John --last-name Doe --dob 1990-05-20
+    tbase-extractor query --query-name patient-by-name-dob --first-name John --last-name Doe --dob 1990-05-20
     ```
-    *(Aliases: `python main.py query -q patient-by-name-dob -fn John -ln Doe -d 1990-05-20`)*
+    *(Aliases: `tbase-extractor query -q patient-by-name-dob -fn John -ln Doe -d 1990-05-20`)*
     *(Note: Date format must be YYYY-MM-DD)*
 
 *   **Query Patient by Name and DOB (JSON Output):**
     ```bash
-    python main.py query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -o output/jane_smith_data.json
+    tbase-extractor query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -o output/jane_smith_data.json
     ```
 
 *   **Query Patient by Name and DOB (TSV Output):**
     ```bash
-    python main.py query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -f tsv -o output/jane_smith_data.tsv
+    tbase-extractor query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -f tsv -o output/jane_smith_data.tsv
     ```
 
 ## Adding New Queries
@@ -152,4 +162,4 @@ The script includes handling for:
 
 ## License
 
-This project is intended for educational purposes. You can adapt the license as needed. Consider adding a `LICENSE` file (e.g., with the MIT License text).
+MIT

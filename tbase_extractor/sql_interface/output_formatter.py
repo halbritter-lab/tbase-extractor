@@ -1,3 +1,4 @@
+from sql_interface.output_formatter import *
 import json
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
@@ -6,7 +7,6 @@ import io # For potential string buffering
 import csv
 
 # Optional: Use tabulate for nicer console tables
-# Run: pip install tabulate
 try:
     from tabulate import tabulate
     HAS_TABULATE = True
@@ -14,7 +14,6 @@ except ImportError:
     HAS_TABULATE = False
     print("Note: 'tabulate' library not found. Console table formatting will be basic.")
     print("      Install using: pip install tabulate")
-
 
 class OutputFormatter:
     """Formats query results (list of dictionaries) for display or saving."""

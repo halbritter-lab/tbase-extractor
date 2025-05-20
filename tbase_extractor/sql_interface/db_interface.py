@@ -198,5 +198,3 @@ class SQLInterface:
                 print(f"Warning: Error closing connection: {ex}")
             finally:
                 self.connection = None # Ensure connection is None regardless of close success
-        if self.debug:
-            print("[DEBUG] Database connection closed.")
