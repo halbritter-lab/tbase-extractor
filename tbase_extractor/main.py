@@ -9,7 +9,6 @@ from .utils import resolve_templates_dir
 from .sql_interface.db_interface import SQLInterface
 from .sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
 from .sql_interface.output_formatter import OutputFormatter
-# from .sql_interface.exceptions import * # Keep if using custom exceptions
 
 load_dotenv()
 
@@ -34,19 +33,18 @@ def setup_arg_parser():
 
     # --- Sub-command: query ---
     parser_query = subparsers.add_parser('query', help='Execute a predefined query template.')
-    parser_query.add_argument(
-        '--query-name', '-q',
+    parser_query.add_argument(        '--query-name', '-q',
         required=True,
-        choices=['patient-details', 'patient-by-name-dob'],
+        choices=['get_patient_by_id', 'patient-by-name-dob'],
         help="REQUIRED. The name of the predefined query template to execute.\n"
              "Must correspond to a file in the 'sql_templates' directory.\n"
              "Examples:\n"
-             "  'patient-details': Get details for a specific patient by ID.\n"
+             "  'get_patient_by_id': Get details for a specific patient by ID.\n"
              "  'patient-by-name-dob': Get patient details by Name and Date of Birth."
     )
     parser_query.add_argument(
         '--patient-id', '-i', type=int, metavar='ID',
-        help='Patient ID (required for \'patient-details\' query).'
+        help='Patient ID (required for \'get_patient_by_id\' query).'
     )
     parser_query.add_argument(
         '--first-name', '-fn', type=str, metavar='NAME',
@@ -175,10 +173,10 @@ def main():
         elif args.action == 'query':
             query_display_name = f"Query '{args.query_name}'"
 
-            if args.query_name == 'patient-details':
+            if args.query_name == 'get_patient_by_id':
                 if args.patient_id is None:
-                    logger.error("Argument --patient-id/-i is REQUIRED for query 'patient-details'.")
-                    parser.error("Argument --patient-id/-i is REQUIRED for query 'patient-details'.")
+                    logger.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
+                    parser.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
                 query_info = query_manager.get_patient_by_id_query(args.patient_id)
 
             elif args.query_name == 'patient-by-name-dob':
@@ -248,7 +246,7 @@ def main():
                         logger.debug(f"Number of rows fetched: {len(results)}")
                     if not results:
                         if args.action == 'query':
-                            if args.query_name == 'patient-details':
+                            if args.query_name == 'get_patient_by_id':
                                 logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
                             elif args.query_name == 'patient-by-name-dob':
                                 logger.info(f"Query executed successfully, but no data found for "
