@@ -190,6 +190,7 @@ def main():
     query_info = None
     query_display_name = args.action
     results = None
+    is_fuzzy_search = False  # Initialize the variable here
 
     try:
         if args.action == 'list-tables':
@@ -282,20 +283,45 @@ def main():
                 print("Aborting: Database connection failed.", file=sys.stderr)
                 sys.exit(1)
 
-            if args.query_name == 'patient-fuzzy-search':
-                # For fuzzy search, use the PatientSearchStrategy
-                fuzzy_matcher = FuzzyMatcher(
-                    string_similarity_threshold=args.fuzzy_threshold,
-                    date_year_tolerance=args.dob_year_tolerance
-                )
-                strategy = PatientSearchStrategy(db, query_manager, fuzzy_matcher)
-                results = strategy.search(search_params, min_overall_score=args.min_match_score)
-                if not results:
-                    logger.info("Fuzzy search completed, but no matching patients were found.")
+            if args.action == 'query':
+                if args.query_name == 'patient-fuzzy-search':
+                    # For fuzzy search, use the PatientSearchStrategy
+                    fuzzy_matcher = FuzzyMatcher(
+                        string_similarity_threshold=args.fuzzy_threshold,
+                        date_year_tolerance=args.dob_year_tolerance
+                    )
+                    strategy = PatientSearchStrategy(db, query_manager, fuzzy_matcher)
+                    results = strategy.search(search_params, min_overall_score=args.min_match_score)
+                    if not results:
+                        logger.info("Fuzzy search completed, but no matching patients were found.")
+                    else:
+                        logger.info(f"Fuzzy search found {len(results)} potential matches.")
                 else:
-                    logger.info(f"Fuzzy search found {len(results)} potential matches.")
-            else:
-                # For regular queries, use the normal query execution path
+                    # For regular queries, use the normal query execution path
+                    if db.execute_query(sql, params):
+                        if debug:
+                            logger.debug("Query executed successfully. Fetching results...")
+                        fetched_data = db.fetch_results()
+                        if fetched_data is not None:
+                            results = fetched_data
+                            if debug:
+                                logger.debug(f"Number of rows fetched: {len(results)}")
+                            if not results:
+                                if args.query_name == 'get_patient_by_id':
+                                    logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
+                                elif args.query_name == 'patient-by-name-dob':
+                                    logger.info(f"Query executed successfully, but no data found for "
+                                          f"FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
+                                else:
+                                    logger.info("Query executed successfully, but returned no results.")
+                        else:
+                            logger.error("Error occurred while fetching results.")
+                            print("Error occurred while fetching results.", file=sys.stderr)
+                    else:
+                        logger.error("Aborting: Query execution failed.")
+                        print("Aborting: Query execution failed.", file=sys.stderr)
+                        sys.exit(1)
+            else:  # list-tables
                 if db.execute_query(sql, params):
                     if debug:
                         logger.debug("Query executed successfully. Fetching results...")
@@ -305,16 +331,7 @@ def main():
                         if debug:
                             logger.debug(f"Number of rows fetched: {len(results)}")
                         if not results:
-                            if args.action == 'query':
-                                if args.query_name == 'get_patient_by_id':
-                                    logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
-                                elif args.query_name == 'patient-by-name-dob':
-                                    logger.info(f"Query executed successfully, but no data found for "
-                                          f"FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
-                                else:
-                                    logger.info("Query executed successfully, but returned no results.")
-                            else:
-                                logger.info("Query executed successfully, but returned no results.")
+                            logger.info("Query executed successfully, but returned no results.")
                     else:
                         logger.error("Error occurred while fetching results.")
                         print("Error occurred while fetching results.", file=sys.stderr)
