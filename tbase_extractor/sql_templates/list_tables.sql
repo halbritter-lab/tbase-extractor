@@ -1,0 +1,1 @@
+-- see sql_templates/list_tables.sql in project root

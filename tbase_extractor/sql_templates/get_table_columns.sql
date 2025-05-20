@@ -1,0 +1,1 @@
+-- see sql_templates/get_table_columns.sql in project root

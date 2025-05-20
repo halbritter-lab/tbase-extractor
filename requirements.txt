@@ -1,5 +1,0 @@
-# requirements.txt
-
-pyodbc
-python-dotenv
-tabulate  # Optional, but recommended for nicely formatted console output

@@ -1,0 +1,1 @@
+-- see sql_templates/get_patient_by_id.sql in project root
