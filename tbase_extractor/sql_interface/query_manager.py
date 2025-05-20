@@ -135,3 +135,44 @@ class QueryManager:
             self.load_query_template('get_patient_by_name_dob'),
             (first_name, last_name, dob_date)
         )
+
+    def get_patients_by_dob_year_range_query(self, start_year: int, end_year: int) -> tuple[str, tuple[int, int]]:
+        """Get patients with DOB in a year range.
+
+        Args:
+            start_year (int): Start year (inclusive)
+            end_year (int): End year (inclusive)
+
+        Returns:
+            tuple[str, tuple[int, int]]: SQL query and params tuple
+        """
+        sql = self.load_query_template("get_patients_by_dob_year_range")
+        return sql, (start_year, end_year)
+
+    def get_patients_by_lastname_like_query(self, lastname_pattern: str) -> tuple[str, tuple[str]]:
+        """Get patients with last names matching a pattern.
+
+        Args:
+            lastname_pattern (str): Lastname pattern for LIKE clause (% wildcards will be added if not present)
+
+        Returns:
+            tuple[str, tuple[str]]: SQL query and params tuple
+        """
+        if not any(c in lastname_pattern for c in ['%', '_']):
+            lastname_pattern = f"{lastname_pattern}%"
+        sql = self.load_query_template("get_patients_by_lastname_like")
+        return sql, (lastname_pattern,)
+
+    def get_all_patients_query(self) -> tuple[str, tuple[()]]:
+        """Get all patients from the database. Use with caution!
+
+        Returns:
+            tuple[str, tuple[()]]: SQL query and empty params tuple
+        """
+        sql = self.load_query_template("get_all_patients")
+        return sql, tuple()
+
+    def get_table_columns_query(self, table_name: str, table_schema: str) -> tuple[str, tuple[str, str]]:
+        """Get a query to fetch column names and data types for a specific table."""
+        sql = self.load_query_template("get_table_columns")
+        return sql, (table_name, table_schema)
