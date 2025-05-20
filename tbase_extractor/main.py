@@ -1,3 +1,4 @@
+"""Main module for the tbase_extractor package."""
 import argparse
 import os
 import sys
@@ -12,7 +13,7 @@ from .sql_interface.output_formatter import OutputFormatter
 
 load_dotenv()
 
-DOB_FORMAT = "%Y-%m-%d" # Define the expected date format
+DOB_FORMAT = "%Y-%m-%d"  # Define the expected date format
 
 def setup_arg_parser():
     parser = argparse.ArgumentParser(
@@ -309,4 +310,6 @@ def main():
         handle_output(results, output_file_path, query_display_name, effective_format, metadata_dict)
     print(f"\n--- {query_display_name} finished ---")
 
-main()
+
+if __name__ == "__main__":
+    main()
