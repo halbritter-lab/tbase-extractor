@@ -1,9 +1,41 @@
+import html
+import re
+from bs4 import BeautifulSoup
 import pyodbc
 import os
 from typing import Optional, List, Dict, Any, Tuple
 
 class SQLInterface:
     """Handles database connection, query execution, and result fetching."""
+
+    @staticmethod
+    def _clean_field_value(value: Any) -> Any:
+        """
+        Cleans a field value by removing HTML tags and standardizing newlines.
+
+        Args:
+            value (Any): The value to clean, typically a string from a database field.
+
+        Returns:
+            Any: The cleaned value if the input was a string, otherwise the original value.
+        """
+        if not isinstance(value, str):
+            return value
+
+        # First, unescape HTML entities (e.g., Ä -> Ä)
+        text = html.unescape(value)
+
+        # Replace <br> tags with newlines
+        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+
+        # Remove all other HTML tags using BeautifulSoup
+        text = BeautifulSoup(text, "html.parser").get_text(separator='\n')
+
+        # Normalize multiple consecutive newlines to a single newline
+        text = re.sub(r'\n\s*\n+', '\n', text)
+
+        # Remove leading and trailing whitespace
+        return text.strip()
 
     def __init__(self, debug: bool = False):
         """Initializes connection parameters from environment variables."""
@@ -112,6 +144,8 @@ class SQLInterface:
 
         Converts results into a list of dictionaries where keys are column names.
 
+        Automatically cleans any string values to remove HTML and normalize newlines.
+
         Returns:
             Optional[List[Dict[str, Any]]]: A list of dictionaries representing the rows,
                                             an empty list if the query returned no rows,
@@ -127,7 +161,6 @@ class SQLInterface:
             if self.cursor.description is None:
                 # This typically means it wasn't a SELECT or the SELECT failed before producing results.
                 # It could also be a successful INSERT/UPDATE/DELETE.
-                # Returning [] is appropriate as no *rows* are available to fetch.
                 return []
 
             columns = [column[0] for column in self.cursor.description]
@@ -135,8 +168,15 @@ class SQLInterface:
             rows = self.cursor.fetchall()
             if self.debug:
                 print(f"[DEBUG] Rows fetched: {len(rows)}")
-            # Convert rows (list of tuples) to list of dictionaries
-            return [dict(zip(columns, row)) for row in rows]
+            
+            # Convert rows to list of dictionaries, cleaning any string values
+            cleaned_results = []
+            for row in rows:
+                cleaned_row = {}
+                for col, val in zip(columns, row):
+                    cleaned_row[col] = self._clean_field_value(val)
+                cleaned_results.append(cleaned_row)
+            return cleaned_results
 
         except pyodbc.Error as ex:
             # Catch errors specifically during fetch or description access
