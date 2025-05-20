@@ -109,3 +109,6 @@ dmypy.json
 
 # output folder
 /output
+
+# manual testing folder
+/manual_tests
