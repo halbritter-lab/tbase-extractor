@@ -1,18 +1,17 @@
 -- Query to list all user tables in the database
 SELECT 
-    t.TABLE_SCHEMA as SchemaName,
-    t.TABLE_NAME as TableName,
-    t.TABLE_TYPE as TableType,
-    (
-        SELECT COUNT(*) 
-        FROM INFORMATION_SCHEMA.COLUMNS c 
-        WHERE c.TABLE_SCHEMA = t.TABLE_SCHEMA 
-        AND c.TABLE_NAME = t.TABLE_NAME
-    ) as ColumnCount
+    t.TABLE_NAME as [Table Name],
+    COUNT(*) as [Column Count],
+    CAST(STRING_AGG(CAST((c.COLUMN_NAME + ' (' + c.DATA_TYPE + ')') AS VARCHAR(MAX)), CHAR(13) + CHAR(10)) AS VARCHAR(MAX)) as [Columns]
 FROM 
     INFORMATION_SCHEMA.TABLES t
+INNER JOIN 
+    INFORMATION_SCHEMA.COLUMNS c 
+    ON t.TABLE_SCHEMA = c.TABLE_SCHEMA 
+    AND t.TABLE_NAME = c.TABLE_NAME
 WHERE 
     t.TABLE_TYPE = 'BASE TABLE'
+GROUP BY
+    t.TABLE_NAME
 ORDER BY 
-    t.TABLE_SCHEMA,
     t.TABLE_NAME
