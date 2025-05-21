@@ -16,7 +16,8 @@ dependencies = [
     "pyodbc",
     "python-dotenv",
     "tabulate",
-    "beautifulsoup4"
+    "beautifulsoup4",
+    "rapidfuzz"
 ]
 
 [tool.setuptools]

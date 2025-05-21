@@ -60,15 +60,15 @@ Key Libraries Used:
     # Windows: .\venv\Scripts\activate
     # macOS/Linux: source venv/bin/activate
     ```
-3.  Install the required Python libraries from the `requirements.txt` file:
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(This installs `pyodbc`, `python-dotenv`, and `tabulate`)*
-4.  Install the package itself:
+3.  Install the package and its dependencies:
     ```bash
     pip install .
     ```
+    For a development/editable install:
+    ```bash
+    pip install -e .
+    ```
+    This will install `tbase-extractor` and all libraries listed in `pyproject.toml` (like `pyodbc`, `python-dotenv`, `tabulate`, `rapidfuzz`, `beautifulsoup4`).
     Or for a development/editable install:
     ```bash
     pip install -e .

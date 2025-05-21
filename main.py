@@ -1,1 +1,0 @@
-# This file is redundant and can be removed. Use tbase_extractor/main.py instead.

@@ -4,23 +4,55 @@ import os
 import sys
 import pyodbc
 from datetime import datetime, date
+from typing import Optional, List, Dict, Any, Tuple
 from dotenv import load_dotenv
 import logging
 from .utils import resolve_templates_dir
-from tbase_extractor.sql_interface.db_interface import SQLInterface
-from tbase_extractor.sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
-from tbase_extractor.sql_interface.output_formatter import OutputFormatter
+from .sql_interface.db_interface import SQLInterface
+from .sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
+from .sql_interface.output_formatter import OutputFormatter
 from .matching import FuzzyMatcher, PatientSearchStrategy
-from .matching import FuzzyMatcher, PatientSearchStrategy
-
-# Dynamically add the project root to PYTHONPATH
-project_root = os.path.dirname(os.path.abspath(__file__))
-if project_root not in sys.path:
-    sys.path.append(project_root)
 
 load_dotenv()
 
 DOB_FORMAT = "%Y-%m-%d"  # Define the expected date format
+
+def parse_dob_str(dob_str: Optional[str], logger: logging.Logger) -> Optional[date]:
+    """Parses a DOB string and returns a date object or None if invalid."""
+    if not dob_str:
+        return None
+    try:
+        return datetime.strptime(dob_str, DOB_FORMAT).date()
+    except ValueError:
+        logger.error(f"Invalid Date of Birth format for '{dob_str}'. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
+        raise ValueError(f"Invalid Date of Birth format: {dob_str}")
+
+def determine_output_format(user_format: Optional[str], output_file_path: Optional[str], logger: logging.Logger) -> str:
+    """Determines the effective output format."""
+    if user_format:
+        return user_format
+    if output_file_path:
+        _filename, ext = os.path.splitext(output_file_path)
+        ext = ext.lower()
+        if ext == '.json':
+            return 'json'
+        elif ext == '.csv':
+            return 'csv'
+        elif ext == '.tsv':
+            return 'tsv'
+        else:
+            if ext:
+                logger.warning(
+                    f"Output file extension '{ext}' for '{output_file_path}' is not recognized. "
+                    f"Defaulting to 'json' format."
+                )
+            else:
+                logger.warning(
+                    f"No output file extension provided for '{output_file_path}'. "
+                    f"Defaulting to 'json' format."
+                )
+            return 'json'
+    return 'stdout'  # Default if no file and no format specified
 
 def setup_arg_parser():
     parser = argparse.ArgumentParser(
@@ -168,10 +200,12 @@ def setup_logging(debug: bool = False, log_file: str = None):
     )
 
 def main():
+    # 1. Setup (templates_dir, parser, args, logging)
     try:
         templates_dir = resolve_templates_dir()
     except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        # No logger yet, so print to stderr
+        print(f"Critical Error: {e}", file=sys.stderr)
         sys.exit(1)
 
     parser = setup_arg_parser()
@@ -179,213 +213,232 @@ def main():
 
     debug = getattr(args, 'debug', False)
     log_file = os.getenv('SQL_APP_LOGFILE', None)
-    setup_logging(debug, log_file)
-    logger = logging.getLogger("main")
+    setup_logging(debug, log_file)  # Ensure logger is configured
+    logger = logging.getLogger("tbase_extractor.main")  # Use a specific logger name
 
     logger.debug(f"Parsed arguments: {args}")
 
-    query_manager = QueryManager(templates_dir)
-    sql = ""
-    params = ()
-    query_info = None
-    query_display_name = args.action
+    query_manager = QueryManager(templates_dir, debug=debug)  # Pass debug to QM
     results = None
-    is_fuzzy_search = False  # Initialize the variable here
+    query_display_name = args.action  # Default display name
 
+    # 2. Database Interaction and Action Handling
     try:
-        if args.action == 'list-tables':
-            query_info = query_manager.get_list_tables_query()
-            query_display_name = 'List Tables'
-            sql, params = query_info
-
-        elif args.action == 'query':
-            query_display_name = f"Query '{args.query_name}'"
-            is_fuzzy_search = args.query_name == 'patient-fuzzy-search'
-
-            if args.query_name == 'get_patient_by_id':
-                if args.patient_id is None:
-                    logger.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
-                    parser.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
-                query_info = query_manager.get_patient_by_id_query(args.patient_id)
-                sql, params = query_info
-
-            elif args.query_name == 'patient-by-name-dob':
-                if not all([args.first_name, args.last_name, args.dob]):
-                    logger.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED for query 'patient-by-name-dob'.")
-                    parser.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED "
-                             "for query 'patient-by-name-dob'.")
-                dob_object = None
-                try:
-                    dob_object = datetime.strptime(args.dob, DOB_FORMAT).date()
-                except ValueError:
-                    logger.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
-                    parser.error(f"Invalid Date of Birth format for --dob/-d. "
-                             f"Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
-                query_info = query_manager.get_patient_by_name_dob_query(args.first_name, args.last_name, dob_object)
-                sql, params = query_info
-
-            elif args.query_name == 'patient-fuzzy-search':
-                if not any([args.first_name, args.last_name, args.dob]):
-                    logger.error("At least one search parameter (--first-name/-fn, --last-name/-ln, or --dob/-d) is REQUIRED for fuzzy search.")
-                    parser.error("At least one search parameter (--first-name/-fn, --last-name/-ln, or --dob/-d) is REQUIRED for fuzzy search.")
-
-                # Parse DOB if provided
-                dob_object = None
-                if args.dob:
-                    try:
-                        dob_object = datetime.strptime(args.dob, DOB_FORMAT).date()
-                    except ValueError:
-                        logger.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
-                        parser.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
-
-                # Initialize fuzzy search components
-                search_params = {
-                    'first_name': args.first_name,
-                    'last_name': args.last_name,
-                    'dob': dob_object
-                }
-                
-                query_display_name = "Fuzzy Patient Search"
-
-            elif args.query_name == 'get-table-columns':
-                if not args.table_name or not args.table_schema:
-                    logger.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
-                    parser.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
-                query_info = query_manager.get_table_columns_query(args.table_name, args.table_schema)
-                sql, params = query_info
-
-            else:
-                logger.error(f"Query name '{args.query_name}' is not recognized or implemented.")
-                print(f"Error: Query name '{args.query_name}' is not recognized or implemented.", file=sys.stderr)
-                sys.exit(1)
-
-    except QueryTemplateNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"An unexpected error occurred during query preparation: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if debug and not is_fuzzy_search:
-        logger.debug(f"SQL to execute:\n{sql}")
-        logger.debug(f"Query parameters: {params}")
-
-    logger.info(f"Attempting to execute: {query_display_name}")
-    if not is_fuzzy_search and params:
-        logger.info(f"With parameters: {params}")
-    if debug:
-        logger.debug("Attempting database connection...")
-
-    try:
-        with SQLInterface(debug=debug) as db:
+        with SQLInterface(debug=debug) as db:  # Pass debug to SQLInterface
             if not db.connection:
                 logger.error("Aborting: Database connection failed.")
-                print("Aborting: Database connection failed.", file=sys.stderr)
                 sys.exit(1)
 
-            if args.action == 'query':
-                if args.query_name == 'patient-fuzzy-search':
-                    # For fuzzy search, use the PatientSearchStrategy
-                    fuzzy_matcher = FuzzyMatcher(
-                        string_similarity_threshold=args.fuzzy_threshold,
-                        date_year_tolerance=args.dob_year_tolerance
-                    )
-                    strategy = PatientSearchStrategy(db, query_manager, fuzzy_matcher)
-                    results = strategy.search(search_params, min_overall_score=args.min_match_score)
-                    if not results:
-                        logger.info("Fuzzy search completed, but no matching patients were found.")
-                    else:
-                        logger.info(f"Fuzzy search found {len(results)} potential matches.")
-                else:
-                    # For regular queries, use the normal query execution path
-                    if db.execute_query(sql, params):
-                        if debug:
-                            logger.debug("Query executed successfully. Fetching results...")
-                        fetched_data = db.fetch_results()
-                        if fetched_data is not None:
-                            results = fetched_data
-                            if debug:
-                                logger.debug(f"Number of rows fetched: {len(results)}")
-                            if not results:
-                                if args.query_name == 'get_patient_by_id':
-                                    logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
-                                elif args.query_name == 'patient-by-name-dob':
-                                    logger.info(f"Query executed successfully, but no data found for "
-                                          f"FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
-                                else:
-                                    logger.info("Query executed successfully, but returned no results.")
-                        else:
-                            logger.error("Error occurred while fetching results.")
-                            print("Error occurred while fetching results.", file=sys.stderr)
-                    else:
-                        logger.error("Aborting: Query execution failed.")
-                        print("Aborting: Query execution failed.", file=sys.stderr)
-                        sys.exit(1)
-            else:  # list-tables
-                if db.execute_query(sql, params):
-                    if debug:
-                        logger.debug("Query executed successfully. Fetching results...")
-                    fetched_data = db.fetch_results()
-                    if fetched_data is not None:
-                        results = fetched_data
-                        if debug:
-                            logger.debug(f"Number of rows fetched: {len(results)}")
-                        if not results:
-                            logger.info("Query executed successfully, but returned no results.")
-                    else:
-                        logger.error("Error occurred while fetching results.")
-                        print("Error occurred while fetching results.", file=sys.stderr)
-                else:
-                    logger.error("Aborting: Query execution failed.")
-                    print("Aborting: Query execution failed.", file=sys.stderr)
-                    sys.exit(1)
+            # Record query start time for metadata
+            query_start_time = datetime.utcnow()
 
+            if args.action == 'list-tables':
+                handler = ACTION_HANDLERS.get('list-tables')
+                if handler:
+                    results, query_display_name = handler(args, query_manager, db, logger)
+                else:  # Should not happen if parser is set up correctly
+                    logger.error(f"No handler for action: {args.action}")
+                    sys.exit(1)
+            
+            elif args.action == 'query':
+                query_handler_map = ACTION_HANDLERS.get('query', {})
+                handler = query_handler_map.get(args.query_name)
+                if handler:
+                    # Pass parser to handlers that might call parser.error()
+                    results, query_display_name = handler(args, query_manager, db, logger, parser)
+                else:
+                    logger.error(f"Query name '{args.query_name}' is not recognized or implemented.")
+                    sys.exit(1)
+            else:  # Should not happen due to argparse
+                logger.critical(f"Unknown action: {args.action}")
+                sys.exit(1)
+
+            # Calculate execution time for metadata
+            execution_duration_ms = int((datetime.utcnow() - query_start_time).total_seconds() * 1000)
+
+    except QueryTemplateNotFoundError as e:
+        logger.error(f"Query Template Error: {e}", exc_info=debug)
+        sys.exit(1)
     except pyodbc.Error as db_err:
         logger.exception(f"A database error occurred: {db_err}")
-        print(f"\nA database error occurred: {db_err}", file=sys.stderr)
+        sys.exit(1)
+    except RuntimeError as e:  # Catch errors raised by handlers
+        logger.error(f"Runtime error during execution: {e}", exc_info=debug)
         sys.exit(1)
     except Exception as e:
-        logger.exception(f"An unexpected error occurred during database interaction: {e}")
-        print(f"\nAn unexpected error occurred during database interaction: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"An unexpected error occurred: {e}")
         sys.exit(1)
 
-    if results is not None:
+    # 3. Output Handling
+    if results is not None:  # results can be an empty list
         output_file_path = getattr(args, 'output', None)
-        user_format = getattr(args, 'format', None)
-        output_destination_is_file = output_file_path is not None
-        effective_format = None
-        logger = logging.getLogger("main")
-        if user_format is not None:
-            effective_format = user_format
-        elif output_destination_is_file:
-            _filename, ext = os.path.splitext(output_file_path)
-            ext = ext.lower()
-            if ext == '.json':
-                effective_format = 'json'
-            elif ext == '.csv':
-                effective_format = 'csv'
-            elif ext == '.tsv':
-                effective_format = 'tsv'
-            else:
-                effective_format = 'json'
-                if ext:
-                    logger.warning(
-                        f"Output file extension '{ext}' for '{output_file_path}' is not recognized. "
-                        f"Defaulting to 'json' format."
-                    )
-                else:
-                    logger.warning(
-                        f"No output file extension provided for '{output_file_path}'. "
-                        f"Defaulting to 'json' format."
-                    )
-        else:
-            effective_format = 'stdout'
-        metadata_dict = {'row_count': len(results)} if results is not None else None
+        user_format_arg = getattr(args, 'format', None)
+        
+        # Use the new utility function
+        effective_format = determine_output_format(user_format_arg, output_file_path, logger)
+        
+        # Enhanced metadata
+        metadata_dict = {
+            'query_timestamp_utc': query_start_time.isoformat(),
+            'query_name': args.query_name if args.action == 'query' else args.action,
+            'query_display_name': query_display_name,
+            'tool_version': "0.1.0",  # Get from package version
+            'execution_duration_ms': execution_duration_ms,
+            'row_count_fetched': len(results),
+            'status': "success" if results else "success_no_data",
+            'parameters': {
+                k: str(v) for k, v in vars(args).items() 
+                if k in ['first_name', 'last_name', 'dob', 'patient_id', 'query_name', 'table_name', 'table_schema']
+                and v is not None
+            }
+        }
+        
         handle_output(results, output_file_path, query_display_name, effective_format, metadata_dict)
-    print(f"\n--- {query_display_name} finished ---")
+    
+    logger.info(f"--- {query_display_name} finished ---")
 
 
 if __name__ == "__main__":
     main()
+
+def handle_list_tables(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger) -> tuple[Optional[list], str]:
+    """Handle the list-tables action."""
+    query_display_name = 'List Tables'
+    logger.info(f"Attempting to execute: {query_display_name}")
+    sql, params = query_manager.get_list_tables_query()
+    
+    if db.execute_query(sql, params):
+        logger.debug("Query executed successfully. Fetching results...")
+        fetched_data = db.fetch_results()
+        if fetched_data is not None:
+            if not fetched_data:
+                logger.info("Query executed successfully, but returned no results.")
+            return fetched_data, query_display_name
+        else:
+            logger.error("Error occurred while fetching results.")
+            raise RuntimeError("Error occurred while fetching results.")
+    else:
+        logger.error("Aborting: Query execution failed.")
+        raise RuntimeError("Query execution failed.")
+
+def handle_get_patient_by_id(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
+    """Handle the get_patient_by_id query."""
+    query_display_name = f"Query 'get_patient_by_id'"
+    if args.patient_id is None:
+        logger.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
+        parser.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
+    
+    logger.info(f"Attempting to execute: {query_display_name} for Patient ID {args.patient_id}")
+    sql, params = query_manager.get_patient_by_id_query(args.patient_id)
+    
+    if db.execute_query(sql, params):
+        logger.debug("Query executed successfully. Fetching results...")
+        fetched_data = db.fetch_results()
+        if fetched_data is not None:
+            if not fetched_data:
+                logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
+            return fetched_data, query_display_name
+        else:
+            logger.error("Error occurred while fetching results.")
+            raise RuntimeError("Error occurred while fetching results.")
+    else:
+        logger.error("Aborting: Query execution failed.")
+        raise RuntimeError("Query execution failed.")
+
+def handle_patient_by_name_dob(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
+    """Handle the patient-by-name-dob query."""
+    query_display_name = f"Query 'patient-by-name-dob'"
+    if not all([args.first_name, args.last_name, args.dob]):
+        logger.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED for query 'patient-by-name-dob'.")
+        parser.error("Arguments --first-name/-fn, --last-name/-ln, and --dob/-d are REQUIRED for query 'patient-by-name-dob'.")
+
+    try:
+        dob_object = parse_dob_str(args.dob, logger)
+    except ValueError:
+        parser.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
+
+    logger.info(f"Attempting to execute: {query_display_name} for Name={args.first_name} {args.last_name}, DOB={args.dob}")
+    sql, params = query_manager.get_patient_by_name_dob_query(args.first_name, args.last_name, dob_object)
+    
+    if db.execute_query(sql, params):
+        logger.debug("Query executed successfully. Fetching results...")
+        fetched_data = db.fetch_results()
+        if fetched_data is not None:
+            if not fetched_data:
+                logger.info(f"Query executed successfully, but no data found for FirstName='{args.first_name}', LastName='{args.last_name}', DOB='{args.dob}'.")
+            return fetched_data, query_display_name
+        else:
+            logger.error("Error occurred while fetching results.")
+            raise RuntimeError("Error occurred while fetching results.")
+    else:
+        logger.error("Aborting: Query execution failed.")
+        raise RuntimeError("Query execution failed.")
+
+def handle_patient_fuzzy_search(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
+    """Handle the patient-fuzzy-search query."""
+    query_display_name = "Fuzzy Patient Search"
+    if not any([args.first_name, args.last_name, args.dob]):
+        logger.error("At least one search parameter (--first-name/-fn, --last-name/-ln, or --dob/-d) is REQUIRED for fuzzy search.")
+        parser.error("At least one search parameter is REQUIRED for fuzzy search.")
+
+    dob_object = None
+    if args.dob:
+        try:
+            dob_object = parse_dob_str(args.dob, logger)
+        except ValueError:
+            parser.error(f"Invalid Date of Birth format for --dob/-d. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
+
+    search_params = {
+        'first_name': args.first_name,
+        'last_name': args.last_name,
+        'dob': dob_object
+    }
+    logger.info(f"Attempting to execute: {query_display_name} with params {search_params}")
+
+    fuzzy_matcher = FuzzyMatcher(
+        string_similarity_threshold=args.fuzzy_threshold,
+        date_year_tolerance=args.dob_year_tolerance
+    )
+    strategy = PatientSearchStrategy(db, query_manager, fuzzy_matcher)
+    results = strategy.search(search_params, min_overall_score=args.min_match_score)
+    
+    if not results:
+        logger.info("Fuzzy search completed, but no matching patients were found.")
+    else:
+        logger.info(f"Fuzzy search found {len(results)} potential matches.")
+    return results, query_display_name
+
+def handle_get_table_columns(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
+    """Handle the get-table-columns query."""
+    query_display_name = f"Query 'get-table-columns'"
+    if not args.table_name or not args.table_schema:
+        logger.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
+        parser.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
+    
+    logger.info(f"Attempting to execute: {query_display_name} for {args.table_schema}.{args.table_name}")
+    sql, params = query_manager.get_table_columns_query(args.table_name, args.table_schema)
+    
+    if db.execute_query(sql, params):
+        logger.debug("Query executed successfully. Fetching results...")
+        fetched_data = db.fetch_results()
+        if fetched_data is not None:
+            if not fetched_data:
+                logger.info(f"Query executed successfully, but no columns found for {args.table_schema}.{args.table_name}.")
+            return fetched_data, query_display_name
+        else:
+            logger.error("Error occurred while fetching results.")
+            raise RuntimeError("Error occurred while fetching results.")
+    else:
+        logger.error("Aborting: Query execution failed.")
+        raise RuntimeError("Query execution failed.")
+
+# Action handlers dictionary mapping actions to their handler functions
+ACTION_HANDLERS = {
+    'list-tables': handle_list_tables,
+    'query': {
+        'get_patient_by_id': handle_get_patient_by_id,
+        'patient-by-name-dob': handle_patient_by_name_dob,
+        'patient-fuzzy-search': handle_patient_fuzzy_search,
+        'get-table-columns': handle_get_table_columns,
+    }
+}

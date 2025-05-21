@@ -1,5 +1,5 @@
 """SQL interface package for tbase-extractor"""
-import sys
+import logging
 
 from .db_interface import SQLInterface
 from .query_manager import QueryManager
@@ -11,6 +11,9 @@ from .exceptions import (
 )
 from .output_formatter import OutputFormatter
 
+# Initialize package logger
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'SQLInterface',
     'QueryManager',
@@ -21,4 +24,4 @@ __all__ = [
     'OutputFormatter'
 ]
 
-print("[DEBUG sql_interface] Package initialized", file=sys.stderr)
+logger.debug("SQL interface package initialized")

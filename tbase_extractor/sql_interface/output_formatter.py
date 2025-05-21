@@ -4,7 +4,11 @@ from typing import List, Dict, Any, Optional
 import sys
 import io  # For potential string buffering
 import csv
+import logging
 from ..matching.models import MatchCandidate, MatchInfo
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Optional: Use tabulate for nicer console tables
 try:
@@ -12,8 +16,8 @@ try:
     HAS_TABULATE = True
 except ImportError:
     HAS_TABULATE = False
-    print("Note: 'tabulate' library not found. Console table formatting will be basic.")
-    print("      Install using: pip install tabulate")
+    logger.warning("'tabulate' library not found. Console table formatting will be basic.")
+    logger.info("To install tabulate, run: pip install tabulate")
 
 class OutputFormatter:
     """Formats query results (list of dictionaries) for display or saving."""
@@ -60,14 +64,14 @@ class OutputFormatter:
         Args:
             data (List[Any]): The query result data.
             indent (Optional[int]): The indentation level for pretty-printing JSON.
-                                    Set to None for compact output. Defaults to 4.
+                                  Set to None for compact output. Defaults to 4.
 
         Returns:
             str: The JSON formatted string representation of the data.
 
         Raises:
             TypeError: If the data contains non-serializable types not handled
-                       by the _datetime_serializer.
+                     by the _datetime_serializer.
             ValueError: If there are issues during JSON encoding.
         """
         try:
@@ -77,8 +81,8 @@ class OutputFormatter:
 
             return json.dumps(data, default=OutputFormatter._datetime_serializer, indent=indent)
         except (TypeError, ValueError) as e:
-            print(f"Error during JSON serialization: {e}", file=sys.stderr)
-            # Re-raise or handle as appropriate for the application
+            logger.error(f"Error during JSON serialization: {e}")
+            # Re-raise for proper error handling by caller
             raise
 
     @staticmethod
@@ -109,6 +113,7 @@ class OutputFormatter:
     def format_as_console_table(data: List[Any], stream=sys.stdout) -> None:
         """Formats data as a console table and writes to the given stream."""
         if not data:
+            logger.info("No data to display.")
             print("No data to display.", file=stream)
             return
 
@@ -129,11 +134,11 @@ class OutputFormatter:
             rows = [list(row.values()) for row in data]
 
         if HAS_TABULATE:
-            from tabulate import tabulate
             table = tabulate(rows, headers=headers, tablefmt="grid")
             print(table, file=stream)
         else:
             # Fallback to basic formatting
+            logger.debug("Using basic table formatting (tabulate not available)")
             print("\t".join(headers), file=stream)
             for row in data:
                 print("\t".join(str(row.get(h, "")) for h in headers), file=stream)
