@@ -58,3 +58,11 @@ The following columns contain important clinical information:
 - Parameters are represented by "?" placeholder in the SQL queries.
 - Always verify that table and column names match your actual database structure before use.
 - The LEFT JOIN in the diagnoses queries ensures patients without diagnoses are still included in results.
+
+
+!!!
+Query inputs that work: 
+'get_patient_by_id', 'patient-by-name-dob', 'patient-fuzzy-search', 'get-table-columns'
+
+if the left_join versions get_patient(s)_diagnoses... are put in the get_patient_... versions, functionality with export of columns from Tables "Patient" and "Diagnose" works, this is possibly due to reliance on other files 
+!!!
