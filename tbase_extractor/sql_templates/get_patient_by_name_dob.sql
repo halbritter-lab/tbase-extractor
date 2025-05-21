@@ -3,7 +3,7 @@
 -- ** IMPORTANT: Verify 'dbo.Patient' schema/table name and column names
 -- ** ('Vorname', 'Name', 'Geburtsdatum') match your actual database structure. **
 SELECT
-    T1.*
+    T1.PatientID, T1.Vorname, T1.Name, T1.Geburtsdatum, T1.Grunderkrankung, T1.ET_Grunderkrankung, T1.Dauernotiz, T1.Dauernotiz_Diagnose
 FROM
     dbo.Patient AS T1
 WHERE

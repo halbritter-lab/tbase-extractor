@@ -3,7 +3,7 @@
 -- ** IMPORTANT: Verify 'dbo.Patient' schema and table name and 'PatientID' column name
 -- ** match your actual database structure. **
 SELECT 
-    p.*  -- Get all columns to see complete patient data
+    p.PatientID, p.Vorname, p.Name, p.Geburtsdatum, p.Grunderkrankung, p.ET_Grunderkrankung, p.Dauernotiz, p.Dauernotiz_Diagnose
 FROM
     dbo.Patient p
 WHERE
