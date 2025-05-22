@@ -53,21 +53,24 @@ class OutputFormatter:
             return obj.isoformat()
         # Let the default JSON encoder handle other types or raise TypeError
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
+        
     @staticmethod
-    def format_as_json(data: List[Any], indent: Optional[int] = 4) -> str:
+    def format_as_json(data_payload: List[Any], metadata: Dict[str, Any] = None, indent: Optional[int] = 4) -> str:
         """
-        Formats the data into a JSON string.
+        Formats the data payload and metadata into a structured JSON string.
 
-        Handles date/datetime objects using the custom serializer.
+        The output JSON will have two top-level keys: "metadata" and "data".
+        Handles date/datetime objects using a custom serializer.
 
         Args:
-            data (List[Any]): The query result data.
+            data_payload (List[Any]): The query result data.
+            metadata (Dict[str, Any]): The metadata dictionary for the query.
+                                     If None, no metadata will be included.
             indent (Optional[int]): The indentation level for pretty-printing JSON.
                                   Set to None for compact output. Defaults to 4.
 
         Returns:
-            str: The JSON formatted string representation of the data.
+            str: The JSON formatted string representation of the structured data.
 
         Raises:
             TypeError: If the data contains non-serializable types not handled
@@ -75,11 +78,24 @@ class OutputFormatter:
             ValueError: If there are issues during JSON encoding.
         """
         try:
-            # Convert MatchCandidate objects to dictionaries if present
-            if data and isinstance(data[0], MatchCandidate):
-                data = [OutputFormatter._match_candidate_to_dict(candidate) for candidate in data]
+            # Ensure indent is an integer or None
+            if indent is not None and not isinstance(indent, int):
+                indent = 4  # Default to 4 spaces if indent is provided but not an integer
+                
+            # Create the structured output
+            structured_output = {
+                "metadata": metadata or {},
+                "data": data_payload
+            }
 
-            return json.dumps(data, default=OutputFormatter._datetime_serializer, indent=indent)
+            # Convert MatchCandidate objects in data_payload to dictionaries if present
+            if isinstance(data_payload, list) and data_payload and hasattr(data_payload[0], 'match_fields_info') and hasattr(data_payload[0], 'overall_score'):
+                processed_payload = []
+                for candidate in data_payload:
+                    processed_payload.append(OutputFormatter._match_candidate_to_dict(candidate))
+                structured_output["data"] = processed_payload
+
+            return json.dumps(structured_output, default=OutputFormatter._datetime_serializer, indent=indent)
         except (TypeError, ValueError) as e:
             logger.error(f"Error during JSON serialization: {e}")
             # Re-raise for proper error handling by caller

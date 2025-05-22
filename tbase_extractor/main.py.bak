@@ -144,30 +144,19 @@ def setup_arg_parser():
     return parser
 
 def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None):
-    """
-    Format and output query results based on the specified format and destination.
-    
-    Args:
-        results_envelope: Query results to format
-        output_file_path: Path to save results to (None for stdout)
-        query_display_name: Display name of the query for logging
-        effective_format: Output format ('json', 'csv', 'tsv', 'stdout')
-        metadata_dict: Optional metadata dictionary to include
-    """
     logger = logging.getLogger("main")
     output_formatter = OutputFormatter()
-    
-    # Process metadata for non-JSON formats (as comments)
-    metadata_summary = ''
-    if metadata_dict:
+    formatted = ''
+    metadata_summary = ''    if metadata_dict:
         metadata_lines = [f"# {k}: {v}" for k, v in metadata_dict.items()]
         metadata_summary = '\n'.join(metadata_lines)
-    
+        
     # Check if we need to process MatchCandidate objects for CSV/TSV formats
     processed_results_for_tabular = results_envelope
     if isinstance(results_envelope, list) and results_envelope and hasattr(results_envelope[0], 'match_fields_info') and hasattr(results_envelope[0], 'overall_score'):
         processed_results_for_tabular = []
         for candidate in results_envelope:
+            # Create a plain dictionary from the MatchCandidate properties
             result = {
                 'overall_score': candidate.overall_score,
                 'primary_match_type': candidate.primary_match_type,
@@ -185,8 +174,7 @@ def handle_output(results_envelope, output_file_path, query_display_name, effect
                     result[f"{field_prefix}_details"] = info.details
                     
             processed_results_for_tabular.append(result)
-    
-    # Output to file if specified
+        
     if output_file_path:
         with open(output_file_path, 'w', encoding='utf-8', newline='') as f:
             if effective_format == 'json':
@@ -210,7 +198,7 @@ def handle_output(results_envelope, output_file_path, query_display_name, effect
                 logger.error(f"Unknown output format: {effective_format}")
                 print(f"Unknown output format: {effective_format}", file=sys.stderr)
                 return
-        logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")    # Output to stdout
+        logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")
     else:
         if effective_format == 'json':
             print(output_formatter.format_as_json(results_envelope, metadata_dict))
