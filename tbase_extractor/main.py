@@ -12,6 +12,7 @@ from .sql_interface.db_interface import SQLInterface
 from .sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
 from .sql_interface.output_formatter import OutputFormatter
 from .matching import FuzzyMatcher, PatientSearchStrategy
+from .matching.models import MatchInfo, MatchCandidate
 
 load_dotenv()
 
@@ -59,13 +60,18 @@ def setup_arg_parser():
         description="Connects to a SQL database to execute predefined queries using templates.",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    
     parser.add_argument(
         '--debug', '-v',
         action='store_true',
         help='Enable verbose debug output for troubleshooting.'
     )
+    
     subparsers = parser.add_subparsers(
-        dest='action', help='The main action to perform. Use one of the subcommands below.', required=True, metavar='ACTION'
+        dest='action',
+        help='The main action to perform. Use one of the subcommands below.',
+        required=True,
+        metavar='ACTION'
     )
 
     # --- Sub-command: list-tables ---
@@ -75,57 +81,82 @@ def setup_arg_parser():
     parser_query = subparsers.add_parser('query', help='Execute a predefined query template.')
     parser_query.add_argument('--query-name', '-q',
         required=True,
-        choices=['get_patient_by_id', 'patient-by-name-dob', 'patient-fuzzy-search', 'get-table-columns'],
+        choices=['get_patient_by_id', 'patient-by-name-dob', 'patient-fuzzy-search', 'get-table-columns', 'batch-search-demographics'],
         help="REQUIRED. The name of the predefined query template to execute.\n"
              "Must correspond to a file in the 'sql_templates' directory.\n"
              "Examples:\n"
              "  'get_patient_by_id': Get details for a specific patient by ID.\n"
              "  'patient-by-name-dob': Get patient details by Name and Date of Birth.\n"
              "  'patient-fuzzy-search': Search for patients with fuzzy name matching and year tolerance.\n"
+             "  'batch-search-demographics': Batch search patients from CSV using EXACT Name and/or DOB matches.\n"
              "  'get-table-columns': Get column details for a specific table and schema."
     )
+    
     parser_query.add_argument(
         '--patient-id', '-i', type=int, metavar='ID',
         help='Patient ID (required for the \"get_patient_by_id\" query unless --input-csv is used).'
     )
+    
     parser_query.add_argument(
         '--input-csv', '-ic', type=str, metavar='CSV_FILE_PATH',
-        help='Path to a CSV file containing patient identifiers for batch processing. '
-             'When used with query_name "get_patient_by_id", this will process multiple IDs.'
+        help='Path to a CSV file containing patient identifiers for batch processing.'
     )
+    
     parser_query.add_argument(
         '--id-column', '-idc', type=str, metavar='COLUMN_NAME', default='PatientID',
         help='The name of the column in the CSV file that contains the patient identifiers (default: "PatientID").'
     )
+    
+    # CSV column name arguments for batch demographic search
+    parser_query.add_argument(
+        '--fn-column', '-fnc', type=str, metavar='COLUMN_NAME', default='FirstName',
+        help='Column name for First Name in CSV for batch-search-demographics (default: "FirstName").'
+    )
+    
+    parser_query.add_argument(
+        '--ln-column', '-lnc', type=str, metavar='COLUMN_NAME', default='LastName',
+        help='Column name for Last Name in CSV for batch-search-demographics (default: "LastName").'
+    )
+    
+    parser_query.add_argument(
+        '--dob-column', '-dc', type=str, metavar='COLUMN_NAME', default='DOB',
+        help='Column name for Date of Birth (YYYY-MM-DD) in CSV for batch-search-demographics (default: "DOB").'
+    )
+    
     parser_query.add_argument(
         '--first-name', '-fn', type=str, metavar='NAME',
         help='Patient First Name (Vorname) for exact or fuzzy matching.'
     )
+    
     parser_query.add_argument(
         '--last-name', '-ln', type=str, metavar='NAME',
         help='Patient Last Name (Name) for exact or fuzzy matching.'
     )
+    
     parser_query.add_argument(
         '--dob', '-d', type=str, metavar='YYYY-MM-DD',
         help='Patient Date of Birth (Geburtsdatum) in %%Y-%%m-%%d format.'
     )
+    
     parser_query.add_argument(
         '--output', '-o', type=str, metavar='FILE_PATH',
         help='Optional path to save results as a JSON, CSV, or TSV file.'
     )
     
-    # Fuzzy search specific arguments
+    # Fuzzy search specific arguments (for patient-fuzzy-search only)
     parser_query.add_argument(
         '--fuzzy-threshold', type=float, default=0.85, metavar='0.0-1.0',
-        help='Similarity threshold for fuzzy name matching (0.0 to 1.0, default: 0.85).'
+        help='Similarity threshold for fuzzy name matching (0.0 to 1.0, default: 0.85) for "patient-fuzzy-search".'
     )
+    
     parser_query.add_argument(
         '--dob-year-tolerance', type=int, default=1, metavar='YEARS',
-        help='Maximum year difference allowed for DOB matching (default: 1).'
+        help='Maximum year difference allowed for DOB matching (default: 1) for "patient-fuzzy-search".'
     )
+    
     parser_query.add_argument(
         '--min-match-score', type=float, default=0.3, metavar='SCORE',
-        help='Minimum overall match score required (0.0 to 1.0, default: 0.3).'
+        help='Minimum overall match score required (0.0 to 1.0, default: 0.3) for "patient-fuzzy-search".'
     )
 
     parser_query.add_argument(
@@ -135,12 +166,15 @@ def setup_arg_parser():
         default=None,
         help='Output format: json, csv, tsv, or stdout (pretty table to console). Inferred from -o extension if not set.'
     )
+    
     parser_query.add_argument('--table-name', '-tn',
         required=False,
         help="The name of the table to query (e.g., 'Patient').")
+    
     parser_query.add_argument('--table-schema', '-ts',
         required=False,
         help="The schema of the table to query (e.g., 'dbo').")
+    
     return parser
 
 def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None):
@@ -611,6 +645,171 @@ def handle_get_table_columns(args: argparse.Namespace, query_manager: QueryManag
         logger.error("Aborting: Query execution failed.")
         raise RuntimeError("Query execution failed.")
 
+def handle_batch_exact_search_demographics(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
+    """
+    Handle batch patient search using EXACT demographics from a CSV file.
+    """
+    query_display_name = f"Batch Exact Demographic Search from {os.path.basename(args.input_csv)}" if args.input_csv else "Batch Exact Demographic Search"
+    
+    if not args.input_csv:
+        logger.error("--input-csv (-ic) is REQUIRED for 'batch-search-demographics' query.")
+        parser.error("--input-csv (-ic) is REQUIRED for 'batch-search-demographics' query.")
+
+    logger.info(f"Attempting to execute: {query_display_name}")
+
+    # Read patient data from CSV
+    from .utils import read_patient_data_from_csv
+    patient_data_rows = read_patient_data_from_csv(
+        args.input_csv, args.fn_column, args.ln_column, args.dob_column, logger
+    )
+
+    if not patient_data_rows:
+        logger.warning(f"No patient data rows read from '{args.input_csv}'. Aborting search.")
+        args.batch_info = {
+            'csv_file_path': args.input_csv,
+            'fn_column_name': args.fn_column,
+            'ln_column_name': args.ln_column,
+            'dob_column_name': args.dob_column,
+            'total_rows_in_csv_input': 0
+        }
+        return [], query_display_name
+
+    all_results = []
+    rows_parsed_for_processing = len(patient_data_rows)
+    rows_with_input_errors = 0
+    successful_searches_conducted = 0
+    failed_row_details: Dict[int, str] = {}
+    
+    # Load the base SQL for selecting patient fields
+    try:
+        base_select_sql = query_manager.load_query_template('get_patient_base_fields')
+    except QueryTemplateNotFoundError:
+        logger.error("SQL template 'get_patient_base_fields.sql' not found. Using hardcoded SELECT.")
+        base_select_sql = """
+        SELECT p.PatientID, p.Vorname, p.Name, p.Geburtsdatum, 
+               p.Grunderkrankung, p.ET_Grunderkrankung, p.Dauernotiz, p.Dauernotiz_Diagnose 
+        FROM dbo.Patient p"""
+
+    for patient_data_row in patient_data_rows:
+        original_row_num = patient_data_row['original_row_number']
+        first_name_csv = patient_data_row.get('first_name')
+        last_name_csv = patient_data_row.get('last_name')
+        dob_str_csv = patient_data_row.get('dob')
+        
+        dob_object = None
+        current_row_error_message = None
+
+        if dob_str_csv:
+            try:
+                dob_object = parse_dob_str(dob_str_csv, logger)
+            except ValueError:
+                current_row_error_message = f"Invalid DOB format: '{dob_str_csv}'"
+                logger.warning(f"CSV row {original_row_num}: {current_row_error_message}. DOB will be ignored for this search.")
+
+        # Build dynamic WHERE clause based on provided non-empty fields
+        conditions = []
+        params = []
+        input_criteria_for_match_info = {}
+
+        if first_name_csv:
+            conditions.append("p.Vorname = ?")
+            params.append(first_name_csv)
+            input_criteria_for_match_info['FirstName'] = first_name_csv
+        if last_name_csv:
+            conditions.append("p.Name = ?")
+            params.append(last_name_csv)
+            input_criteria_for_match_info['LastName'] = last_name_csv
+        if dob_object:
+            conditions.append("p.Geburtsdatum = ?")
+            params.append(dob_object)
+            input_criteria_for_match_info['DOB'] = dob_object
+
+        if not conditions:
+            msg = "No valid search criteria (FirstName, LastName, or valid DOB) provided."
+            if current_row_error_message:
+                msg = f"{current_row_error_message} and no other search parameters."
+            logger.warning(f"CSV row {original_row_num}: {msg} Skipping search.")
+            failed_row_details[original_row_num] = msg
+            rows_with_input_errors += 1
+            continue
+
+        # Construct and execute the query
+        final_sql = f"{base_select_sql} WHERE {' AND '.join(conditions)}"
+        logger.debug(f"CSV row {original_row_num}: Executing SQL: {final_sql} with params: {params}")
+
+        if db.execute_query(final_sql, tuple(params)):
+            successful_searches_conducted += 1
+            fetched_db_records = db.fetch_results()
+            if fetched_db_records:
+                logger.info(f"CSV row {original_row_num}: Found {len(fetched_db_records)} exact match(es).")
+                for db_rec in fetched_db_records:
+                    match_infos = []
+                    if 'FirstName' in input_criteria_for_match_info:
+                        match_infos.append(MatchInfo(
+                            "FirstName", 
+                            input_criteria_for_match_info['FirstName'],
+                            db_rec.get('Vorname'),
+                            "Exact",
+                            1.0
+                        ))
+                    if 'LastName' in input_criteria_for_match_info:
+                        match_infos.append(MatchInfo(
+                            "LastName",
+                            input_criteria_for_match_info['LastName'],
+                            db_rec.get('Name'),
+                            "Exact",
+                            1.0
+                        ))
+                    if 'DOB' in input_criteria_for_match_info:
+                        match_infos.append(MatchInfo(
+                            "DOB",
+                            input_criteria_for_match_info['DOB'],
+                            db_rec.get('Geburtsdatum'),
+                            "Exact",
+                            1.0
+                        ))
+                    
+                    candidate = MatchCandidate(
+                        db_record=db_rec,
+                        match_fields_info=match_infos,
+                        overall_score=1.0,  # Exact match based on provided criteria
+                        primary_match_type="Exact Match (CSV Batch)",
+                        csv_input_row_number=original_row_num,
+                        csv_input_data={
+                            'first_name': first_name_csv,
+                            'last_name': last_name_csv,
+                            'dob_str': dob_str_csv
+                        }
+                    )
+                    all_results.append(candidate)
+            else:
+                logger.info(f"CSV row {original_row_num}: No exact matches found for the provided criteria.")
+        else:
+            logger.error(f"CSV row {original_row_num}: Query execution failed.")
+            failed_row_details[original_row_num] = "Query execution error"
+            rows_with_input_errors += 1
+
+    # Populate batch_info for metadata
+    args.batch_info = {
+        'csv_file_path': args.input_csv,
+        'fn_column_name': args.fn_column,
+        'ln_column_name': args.ln_column,
+        'dob_column_name': args.dob_column,
+        'rows_parsed_for_processing': rows_parsed_for_processing,
+        'rows_with_input_errors': rows_with_input_errors,
+        'successful_searches_conducted': successful_searches_conducted,
+        'total_exact_matches_found': len(all_results),
+        'failed_row_details': failed_row_details if failed_row_details else {}
+    }
+
+    logger.info(f"Batch exact demographic search summary: "
+                f"{rows_parsed_for_processing} rows parsed, "
+                f"{successful_searches_conducted} searches conducted, "
+                f"{rows_with_input_errors} rows had input/query issues, "
+                f"{len(all_results)} total exact matches found.")
+
+    return all_results, query_display_name
+
 # Action handlers dictionary mapping actions to their handler functions
 ACTION_HANDLERS = {
     'list-tables': handle_list_tables,
@@ -619,5 +818,114 @@ ACTION_HANDLERS = {
         'patient-by-name-dob': handle_patient_by_name_dob,
         'patient-fuzzy-search': handle_patient_fuzzy_search,
         'get-table-columns': handle_get_table_columns,
+        'batch-search-demographics': lambda args, query_manager, db, logger, parser: (
+            handle_batch_exact_search_demographics(
+                sql_interface=db,
+                query_manager=query_manager,
+                input_csv=args.input_csv,
+                fn_column=args.fn_column,
+                ln_column=args.ln_column,
+                dob_column=args.dob_column,
+                logger=logger
+            ),
+            'Batch Demographic Search'  # Display name for the query
+        )
     }
 }
+
+def handle_batch_exact_search_demographics(
+    sql_interface: SQLInterface,
+    query_manager: QueryManager,
+    input_csv: str,
+    fn_column: str,
+    ln_column: str,
+    dob_column: str,
+    logger: logging.Logger
+) -> List[MatchCandidate]:
+    """
+    Handle batch demographic search using CSV data.
+    
+    Args:
+        sql_interface: SQLInterface instance for database queries
+        query_manager: QueryManager instance for managing SQL templates
+        input_csv: Path to input CSV file
+        fn_column: Column name for first name
+        ln_column: Column name for last name
+        dob_column: Column name for date of birth
+        logger: Logger instance
+        
+    Returns:
+        List[MatchCandidate]: List of match candidates with CSV traceability
+    """
+    from .utils import read_patient_data_from_csv
+    
+    # Read patient data from CSV
+    patients_data = read_patient_data_from_csv(input_csv, fn_column, ln_column, dob_column, logger)
+    if not patients_data:
+        logger.warning(f"No valid patient data found in CSV file: {input_csv}")
+        return []
+    
+    match_candidates = []
+    query_template = query_manager.load_query_template('get_patient_by_name_dob')
+    
+    # Process each row independently
+    for patient in patients_data:
+        first_name = patient["first_name"]
+        last_name = patient["last_name"]
+        dob_str = patient["date_of_birth"]
+        
+        try:
+            # Parse and validate DOB
+            dob_date = parse_dob_str(dob_str, logger)
+            if not dob_date:
+                continue
+                
+            # Execute exact match query
+            params = [first_name, last_name, dob_str]
+            if sql_interface.execute_query(query_template, params):
+                results = sql_interface.fetch_results()
+                if not results:
+                    continue
+                
+                # Create match candidates with CSV traceability
+                for db_record in results:
+                    match_candidate = MatchCandidate(
+                        db_record=dict(db_record),
+                        csv_input_row_number=patient["_row_number"],
+                        csv_input_data=patient["_raw_data"]
+                    )
+                    
+                    # Add match info for each field
+                    match_candidate.match_fields_info.extend([
+                        MatchInfo(
+                            field_name="first_name",
+                            input_value=first_name,
+                            db_value=db_record["Vorname"],
+                            match_type="Exact"
+                        ),
+                        MatchInfo(
+                            field_name="last_name",
+                            input_value=last_name,
+                            db_value=db_record["Name"],
+                            match_type="Exact"
+                        ),
+                        MatchInfo(
+                            field_name="date_of_birth",
+                            input_value=dob_str,
+                            db_value=db_record["Geburtsdatum"],
+                            match_type="Exact"
+                        )
+                    ])
+                    
+                    match_candidate.calculate_overall_score_and_type(
+                        field_weights={"first_name": 0.3, "last_name": 0.4, "date_of_birth": 0.3},
+                        score_mapping={"Exact": 1.0, "Fuzzy": "use_similarity"}
+                    )
+                    
+                    match_candidates.append(match_candidate)
+                
+        except Exception as e:
+            logger.error(f"Error processing row {patient['_row_number']}: {str(e)}")
+            continue
+    
+    return match_candidates

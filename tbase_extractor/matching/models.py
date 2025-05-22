@@ -16,6 +16,8 @@ class MatchCandidate:
     match_fields_info: List[MatchInfo] = field(default_factory=list)
     overall_score: float = 0.0
     primary_match_type: str = "NoMatch"
+    csv_input_row_number: Optional[int] = None
+    csv_input_data: Optional[Dict[str, Any]] = None
 
     def calculate_overall_score_and_type(
         self,

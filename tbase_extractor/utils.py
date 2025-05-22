@@ -5,7 +5,7 @@ import csv
 import logging
 import importlib.resources as resources
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 def resolve_templates_dir() -> str:
     """
@@ -126,3 +126,60 @@ def read_ids_from_csv(csv_file_path: str, id_column_name: str, logger: logging.L
         logger.info(f"Successfully extracted {len(ids)} IDs from '{csv_file_path}'.")
     
     return ids
+
+def read_patient_data_from_csv(csv_file_path: str, fn_column: str, ln_column: str, dob_column: str, logger: Optional[logging.Logger] = None) -> List[Dict[str, Any]]:
+    """
+    Read patient demographic data from a CSV file.
+    
+    Args:
+        csv_file_path (str): Path to the CSV file
+        fn_column (str): Column name for first name
+        ln_column (str): Column name for last name
+        dob_column (str): Column name for date of birth
+        logger (Optional[logging.Logger]): Logger for error reporting
+        
+    Returns:
+        List[Dict[str, Any]]: List of dictionaries containing patient data with row numbers
+    """
+    patients_data = []
+    
+    if not os.path.exists(csv_file_path):
+        if logger:
+            logger.error(f"CSV file not found: {csv_file_path}")
+        return patients_data
+    
+    try:
+        with open(csv_file_path, mode='r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f)
+            
+            # Validate required columns exist
+            headers = reader.fieldnames
+            if not headers:
+                if logger:
+                    logger.error("CSV file appears to be empty")
+                return patients_data
+            
+            required_columns = {fn_column, ln_column, dob_column}
+            missing_columns = required_columns - set(headers)
+            if missing_columns:
+                if logger:
+                    logger.error(f"Missing required columns in CSV: {', '.join(missing_columns)}")
+                return patients_data
+            
+            for row_num, row in enumerate(reader, start=1):
+                # Extract relevant fields and clean data
+                patient_data = {
+                    "first_name": row[fn_column].strip(),
+                    "last_name": row[ln_column].strip(),
+                    "date_of_birth": row[dob_column].strip(),
+                    "_row_number": row_num,  # Store row number for traceability
+                    "_raw_data": dict(row)  # Store complete row data
+                }
+                patients_data.append(patient_data)
+                
+    except Exception as e:
+        if logger:
+            logger.error(f"Error reading CSV file {csv_file_path}: {str(e)}")
+        raise
+    
+    return patients_data
