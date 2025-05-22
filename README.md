@@ -41,6 +41,10 @@ Key Libraries Used:
     *   Saves results to a specified file in **JSON**, **CSV**, or **TSV** format (see `--format`).
     *   Use `--format` to select output type: `json`, `csv`, `tsv`, or `stdout` (pretty table to console).
     *   If `--output` is not given, formatted output is printed to the console.
+*   **Batch Processing:**
+    *   Process multiple Patient IDs in a single query using a CSV input file.
+    *   Specify a custom ID column name with `--id-column`.
+    *   Detailed metadata about batch processing success/failure rates.
 *   **User-Friendly CLI:** Uses `argparse` with subparsers (`list-tables`, `query`) for clear command structure. Now supports `--format` for output type selection.
 *   **Date Handling:** Validates date input format and correctly serializes date/datetime objects for JSON output.
 *   **Error Handling:** Includes basic error handling for connection issues, query execution, template loading, and file I/O.
@@ -121,6 +125,19 @@ You can now run the tool from any directory:
     ```bash
     tbase-extractor query -q patient-details -i 12345 -f csv -o output/patient_12345.csv
     ```
+
+*   **Batch Query Multiple Patients by ID from CSV File:**
+    ```bash
+    tbase-extractor query -q get_patient_by_id --input-csv patients.csv --output batch_results.json
+    ```
+    *(Aliases: `tbase-extractor query -q get_patient_by_id -ic patients.csv -o batch_results.json`)*
+    *(Note: CSV file must have a header row with a column named "PatientID" by default)*
+
+*   **Batch Query with Custom ID Column Name:**
+    ```bash
+    tbase-extractor query -q get_patient_by_id -ic patients.csv --id-column ID -o batch_results.json
+    ```
+    *(Alias: `tbase-extractor query -q get_patient_by_id -ic patients.csv -idc ID -o batch_results.json`)*
 
 *   **Query Patient by Name and DOB (Console Output):**
     ```bash

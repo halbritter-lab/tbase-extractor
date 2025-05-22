@@ -1,9 +1,11 @@
 """Utility functions for tbase-extractor"""
 import os
 import sys
+import csv
+import logging
 import importlib.resources as resources
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 def resolve_templates_dir() -> str:
     """
@@ -66,3 +68,61 @@ def resolve_templates_dir() -> str:
     error_msg += "3. Project root path\n\n"
     error_msg += "Please ensure sql_templates directory exists and is readable."
     raise RuntimeError(error_msg)
+    
+def read_ids_from_csv(csv_file_path: str, id_column_name: str, logger: logging.Logger) -> List[str]:
+    """
+    Reads a list of IDs from a specified column in a CSV file.
+    
+    The CSV file must have a header row with a column containing the IDs.
+    By default, this column is expected to be named 'PatientID', but this
+    can be customized using the id_column_name parameter.
+    
+    The function handles various error conditions gracefully, including:
+    - Missing CSV file
+    - Improperly formatted CSV
+    - Missing column header
+    - Empty or invalid ID values
+    
+    Args:
+        csv_file_path (str): Path to the CSV file containing IDs
+        id_column_name (str): Name of the column containing the IDs
+        logger (logging.Logger): Logger for error reporting
+        
+    Returns:
+        List[str]: List of IDs extracted from the CSV file
+    """
+    ids = []
+    if not os.path.exists(csv_file_path):
+        logger.error(f"CSV file not found: {csv_file_path}")
+        return ids
+    
+    try:
+        with open(csv_file_path, mode='r', encoding='utf-8-sig', newline='') as infile:  # utf-8-sig for BOM
+            reader = csv.DictReader(infile)
+            if not reader.fieldnames:
+                logger.error(f"CSV file '{csv_file_path}' appears to be empty or improperly formatted.")
+                return ids
+                
+            if id_column_name not in reader.fieldnames:
+                logger.error(f"ID column '{id_column_name}' not found in CSV header. Available columns: {reader.fieldnames}")
+                return ids
+            
+            for row_num, row in enumerate(reader, 1):
+                patient_id_str = row.get(id_column_name)
+                if patient_id_str and patient_id_str.strip():
+                    ids.append(patient_id_str.strip())
+                else:
+                    logger.warning(f"Missing or empty ID in CSV file '{csv_file_path}' at row {row_num}.")
+    except csv.Error as e:
+        logger.error(f"Error reading CSV file '{csv_file_path}': {e}")
+        return []  # Return empty list on CSV error
+    except IOError as e:
+        logger.error(f"IOError reading CSV file '{csv_file_path}': {e}")
+        return []
+    
+    if not ids:
+        logger.warning(f"No IDs extracted from CSV file '{csv_file_path}' with ID column '{id_column_name}'.")
+    else:
+        logger.info(f"Successfully extracted {len(ids)} IDs from '{csv_file_path}'.")
+    
+    return ids

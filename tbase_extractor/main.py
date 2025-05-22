@@ -7,7 +7,7 @@ from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple
 from dotenv import load_dotenv
 import logging
-from .utils import resolve_templates_dir
+from .utils import resolve_templates_dir, read_ids_from_csv
 from .sql_interface.db_interface import SQLInterface
 from .sql_interface.query_manager import QueryManager, QueryTemplateNotFoundError
 from .sql_interface.output_formatter import OutputFormatter
@@ -86,7 +86,16 @@ def setup_arg_parser():
     )
     parser_query.add_argument(
         '--patient-id', '-i', type=int, metavar='ID',
-        help='Patient ID (required for the \"get_patient_by_id\" query).'
+        help='Patient ID (required for the \"get_patient_by_id\" query unless --input-csv is used).'
+    )
+    parser_query.add_argument(
+        '--input-csv', '-ic', type=str, metavar='CSV_FILE_PATH',
+        help='Path to a CSV file containing patient identifiers for batch processing. '
+             'When used with query_name "get_patient_by_id", this will process multiple IDs.'
+    )
+    parser_query.add_argument(
+        '--id-column', '-idc', type=str, metavar='COLUMN_NAME', default='PatientID',
+        help='The name of the column in the CSV file that contains the patient identifiers (default: "PatientID").'
     )
     parser_query.add_argument(
         '--first-name', '-fn', type=str, metavar='NAME',
@@ -276,8 +285,7 @@ def main():
         
         # Use the new utility function
         effective_format = determine_output_format(user_format_arg, output_file_path, logger)
-        
-        # Enhanced metadata
+          # Enhanced metadata
         metadata_dict = {
             'query_timestamp_utc': query_start_time.isoformat(),
             'query_name': args.query_name if args.action == 'query' else args.action,
@@ -285,13 +293,36 @@ def main():
             'tool_version': "0.1.0",  # Get from package version
             'execution_duration_ms': execution_duration_ms,
             'row_count_fetched': len(results),
-            'status': "success" if results else "success_no_data",
-            'parameters': {
-                k: str(v) for k, v in vars(args).items() 
-                if k in ['first_name', 'last_name', 'dob', 'patient_id', 'query_name', 'table_name', 'table_schema']
-                and v is not None
-            }
         }
+        
+        # Base parameters for metadata
+        base_params_for_metadata = {
+            k: str(v) for k, v in vars(args).items() 
+            if k in ['first_name', 'last_name', 'dob', 'patient_id', 'query_name', 'table_name', 'table_schema', 
+                    'input_csv', 'id_column']
+            and v is not None
+        }
+        metadata_dict['parameters'] = base_params_for_metadata
+        
+        # Add batch-specific metadata if available (populated by the handler)
+        if hasattr(args, 'batch_info') and args.batch_info:
+            metadata_dict['batch_processing_summary'] = args.batch_info
+            # Refine status for batch
+            if results:
+                if args.batch_info['ids_processed_successfully'] == args.batch_info['total_ids_in_csv']:
+                    metadata_dict['status'] = "batch_success_all_processed"
+                elif args.batch_info['ids_processed_successfully'] > 0:
+                    metadata_dict['status'] = "batch_partial_success"
+                else:  # No IDs processed successfully, but CSV might have had IDs
+                    metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
+            elif args.batch_info['total_ids_in_csv'] > 0:  # CSV had IDs, but no results (all failed or no data)
+                metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
+            else:  # No IDs in CSV or CSV error
+                metadata_dict['status'] = "batch_input_error_or_empty"
+        elif results:  # Single query with results
+            metadata_dict['status'] = "success"
+        else:  # Single query, no results
+            metadata_dict['status'] = "success_no_data"
         
         handle_output(results, output_file_path, query_display_name, effective_format, metadata_dict)
     
@@ -322,28 +353,105 @@ def handle_list_tables(args: argparse.Namespace, query_manager: QueryManager, db
         raise RuntimeError("Query execution failed.")
 
 def handle_get_patient_by_id(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
-    """Handle the get_patient_by_id query."""
-    query_display_name = f"Query 'get_patient_by_id'"
-    if args.patient_id is None:
-        logger.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
-        parser.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id'.")
+    """
+    Handle the get_patient_by_id query for single ID or batch CSV input.
     
-    logger.info(f"Attempting to execute: {query_display_name} for Patient ID {args.patient_id}")
-    sql, params = query_manager.get_patient_by_id_query(args.patient_id)
+    Supports two modes of operation:
+    1. Single patient ID lookup (using --patient-id)
+    2. Batch processing of multiple IDs from a CSV file (using --input-csv)
     
-    if db.execute_query(sql, params):
-        logger.debug("Query executed successfully. Fetching results...")
-        fetched_data = db.fetch_results()
-        if fetched_data is not None:
-            if not fetched_data:
-                logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
-            return fetched_data, query_display_name
-        else:
-            logger.error("Error occurred while fetching results.")
-            raise RuntimeError("Error occurred while fetching results.")
+    For batch processing, the CSV file must contain a header row with a column
+    containing patient IDs. The column name defaults to "PatientID" but can be
+    specified with --id-column.
+    """
+    original_query_display_name = "Query 'get_patient_by_id'"
+    
+    # Check if we're doing batch CSV processing
+    if args.input_csv:
+        # Batch CSV processing
+        if args.patient_id is not None:
+            logger.error("Cannot use --patient-id (-i) and --input-csv (-ic) simultaneously.")
+            parser.error("Cannot use --patient-id (-i) and --input-csv (-ic) simultaneously for query 'get_patient_by_id'.")
+        
+        query_display_name = f"Batch Query 'get_patient_by_id' from {os.path.basename(args.input_csv)}"
+        logger.info(f"Attempting to execute: {query_display_name}")
+        
+        # Read patient IDs from CSV
+        patient_id_strings = read_ids_from_csv(args.input_csv, args.id_column, logger)
+        if not patient_id_strings:
+            logger.error(f"No valid patient IDs found in '{args.input_csv}' or error reading file.")
+            # Store this info for metadata later
+            args.batch_info = {'total_ids_in_csv': 0, 'ids_processed_successfully': 0, 'ids_failed': 0}
+            return [], query_display_name  # Return empty list, no data
+        
+        all_results = []
+        successful_count = 0
+        failed_ids_details = {}  # Store {id_str: reason}
+        
+        for id_str in patient_id_strings:
+            try:
+                current_patient_id = int(id_str)
+            except ValueError:
+                logger.warning(f"Invalid PatientID format '{id_str}' from CSV. Skipping.")
+                failed_ids_details[id_str] = "Invalid ID format"
+                continue
+            
+            logger.debug(f"Batch processing: Fetching data for Patient ID {current_patient_id}")
+            sql, params = query_manager.get_patient_by_id_query(current_patient_id)
+            
+            if db.execute_query(sql, params):
+                fetched_data = db.fetch_results()
+                if fetched_data is not None:
+                    all_results.extend(fetched_data)
+                    successful_count += 1
+                    if not fetched_data:
+                        logger.info(f"Query for Patient ID {current_patient_id} (from CSV) returned no data.")
+                else:
+                    logger.error(f"Error fetching results for Patient ID {current_patient_id} (from CSV).")
+                    failed_ids_details[str(current_patient_id)] = "Fetch error"  # Use str for key consistency
+            else:
+                logger.error(f"Query execution failed for Patient ID {current_patient_id} (from CSV).")
+                failed_ids_details[str(current_patient_id)] = "Execution error"
+        
+        logger.info(f"Batch processing summary: Successfully fetched data for {successful_count} out of {len(patient_id_strings)} IDs from CSV.")
+        if failed_ids_details:
+            logger.warning(f"Failed to process {len(failed_ids_details)} IDs: {failed_ids_details}")
+        
+        # Store batch processing info in args for metadata
+        args.batch_info = {
+            'csv_file_path': args.input_csv,
+            'id_column_name': args.id_column,
+            'total_ids_in_csv': len(patient_id_strings),
+            'ids_processed_successfully': successful_count,
+            'ids_failed_count': len(failed_ids_details),
+            'failed_ids_details': failed_ids_details 
+        }
+        return all_results, query_display_name
+    
     else:
-        logger.error("Aborting: Query execution failed.")
-        raise RuntimeError("Query execution failed.")
+        # Single ID processing (existing logic)
+        query_display_name = original_query_display_name
+        if args.patient_id is None:
+            logger.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id' (or use --input-csv).")
+            parser.error("Argument --patient-id/-i is REQUIRED for query 'get_patient_by_id' (or use --input-csv).")
+        
+        logger.info(f"Attempting to execute: {query_display_name} for Patient ID {args.patient_id}")
+        sql, params = query_manager.get_patient_by_id_query(args.patient_id)
+        
+        if db.execute_query(sql, params):
+            logger.debug("Query executed successfully. Fetching results...")
+            fetched_data = db.fetch_results()
+            if fetched_data is not None:
+                if not fetched_data:
+                    logger.info(f"Query executed successfully, but no data found for Patient ID {args.patient_id}.")
+                args.batch_info = None  # Indicate not a batch operation
+                return fetched_data, query_display_name
+            else:
+                logger.error("Error occurred while fetching results.")
+                raise RuntimeError("Error occurred while fetching results.")
+        else:
+            logger.error("Aborting: Query execution failed.")
+            raise RuntimeError("Query execution failed.")
 
 def handle_patient_by_name_dob(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
     """Handle the patient-by-name-dob query."""
