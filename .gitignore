@@ -112,3 +112,6 @@ dmypy.json
 
 # manual testing folder
 /manual_tests
+
+#csv input files
+/input_csv
