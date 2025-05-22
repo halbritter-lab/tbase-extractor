@@ -517,25 +517,60 @@ def handle_patient_fuzzy_search(args: argparse.Namespace, query_manager: QueryMa
     return results, query_display_name
 
 def handle_get_table_columns(args: argparse.Namespace, query_manager: QueryManager, db: SQLInterface, logger: logging.Logger, parser: argparse.ArgumentParser) -> tuple[Optional[list], str]:
-    """Handle the get-table-columns query."""
-    query_display_name = f"Query 'get-table-columns'"
+    """
+    Handle the get-table-columns query.
+    
+    Executes a query to fetch column information for a specific table and schema,
+    then processes the results into a summary format.
+    
+    Returns:
+        tuple: (List containing a single dictionary with the table summary, query display name)
+               The dictionary includes table name, schema, column count, and a formatted list of columns.
+    """
+    # Update the display name to be more descriptive
+    query_display_name = f"Table Column Details for '{args.table_schema}.{args.table_name}'"
+    
     if not args.table_name or not args.table_schema:
         logger.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
         parser.error("Arguments --table-name and --table-schema are REQUIRED for query 'get-table-columns'.")
     
-    logger.info(f"Attempting to execute: {query_display_name} for {args.table_schema}.{args.table_name}")
+    logger.info(f"Attempting to execute: get-table-columns query for {args.table_schema}.{args.table_name}")
     sql, params = query_manager.get_table_columns_query(args.table_name, args.table_schema)
     
     if db.execute_query(sql, params):
         logger.debug("Query executed successfully. Fetching results...")
-        fetched_data = db.fetch_results()
-        if fetched_data is not None:
-            if not fetched_data:
-                logger.info(f"Query executed successfully, but no columns found for {args.table_schema}.{args.table_name}.")
-            return fetched_data, query_display_name
+        fetched_column_data = db.fetch_results()
+        
+        if fetched_column_data is None:
+            logger.error("Error occurred while fetching table column results.")
+            raise RuntimeError("Error occurred while fetching table column results.")
+        
+        # Process the fetched data into a summary format
+        summary_dict = {
+            "Table Name": args.table_name,
+            "Table Schema": args.table_schema,
+        }
+        
+        if not fetched_column_data:
+            logger.info(f"Query executed successfully, but no columns found for {args.table_schema}.{args.table_name}.")
+            summary_dict["Column Count"] = 0
+            summary_dict["Columns"] = "No columns found or table not accessible."
+            summary_dict["Status"] = "Table metadata not found or table empty/inaccessible"
         else:
-            logger.error("Error occurred while fetching results.")
-            raise RuntimeError("Error occurred while fetching results.")
+            # Calculate column count
+            column_count = len(fetched_column_data)
+            
+            # Create a formatted string listing each column and its type on a new line
+            columns_list = [f"{col['COLUMN_NAME']} ({col['DATA_TYPE']})" for col in fetched_column_data]
+            columns_summary_str = "\n".join(columns_list)
+            
+            summary_dict["Column Count"] = column_count
+            summary_dict["Columns"] = columns_summary_str
+            
+            logger.info(f"Successfully retrieved {column_count} columns for {args.table_schema}.{args.table_name}")
+        
+        # Return a list containing the single summary dictionary
+        return [summary_dict], query_display_name
     else:
         logger.error("Aborting: Query execution failed.")
         raise RuntimeError("Query execution failed.")

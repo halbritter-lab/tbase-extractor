@@ -156,6 +156,18 @@ You can now run the tool from any directory:
     tbase-extractor query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -f tsv -o output/jane_smith_data.tsv
     ```
 
+*   **Get Column Details for a Specific Table (Console Output):**
+    ```bash
+    tbase-extractor query --query-name get-table-columns --table-name Patient --table-schema dbo
+    ```
+    *(Aliases: `tbase-extractor query -q get-table-columns -tn Patient -ts dbo`)*
+    This will output a summary for the 'Patient' table in the 'dbo' schema, including the table name, schema, column count, and a list of column names with their data types.
+
+*   **Get Column Details for a Specific Table (JSON Output):**
+    ```bash
+    tbase-extractor query -q get-table-columns -tn MyTable -ts other_schema -o output/mytable_columns.json
+    ```
+
 ## Adding New Queries
 
 1.  Create a new `.sql` file in the `sql_templates/` directory (e.g., `get_orders_by_customer.sql`). Use `?` for parameters.
