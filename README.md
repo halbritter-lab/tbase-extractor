@@ -139,6 +139,19 @@ You can now run the tool from any directory:
     ```
     *(Alias: `tbase-extractor query -q get_patient_by_id -ic patients.csv -idc ID -o batch_results.json`)*
 
+*   **Batch Query with Split Output (One file per row):**
+    ```bash
+    tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/patient_files.json --split-output
+    ```
+    *(This will create individual JSON files in the 'output' directory, one per patient, named by PatientID)*
+
+*   **Batch Query with Split Output and Custom Filename Template:**
+    ```bash
+    tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/patient_files.json --split-output --filename-template "{Vorname}_{Name}"
+    ```
+    *(This will create files named after the patient's first and last names, e.g., 'John_Smith.json')*
+    *(Aliases: `tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/patient_files.json -so -ft "{Vorname}_{Name}"`)*
+
 *   **Query Patient by Name and DOB (Console Output):**
     ```bash
     tbase-extractor query --query-name patient-by-name-dob --first-name John --last-name Doe --dob 1990-05-20

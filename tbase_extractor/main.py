@@ -167,6 +167,20 @@ def setup_arg_parser():
         help='Output format: json, csv, tsv, or stdout (pretty table to console). Inferred from -o extension if not set.'
     )
     
+    # New arguments for split file output
+    parser_query.add_argument(
+        '--split-output', '-so',
+        action='store_true',
+        help='Save the output as multiple files (one per row) instead of a single file.'
+    )
+    
+    parser_query.add_argument(
+        '--filename-template', '-ft',
+        type=str,
+        default="{PatientID}",
+        help='Template for naming individual output files when using --split-output. Use field names in curly braces, e.g., "{PatientID}" or "{Vorname}_{Name}". Default: "{PatientID}"'
+    )
+    
     parser_query.add_argument('--table-name', '-tn',
         required=False,
         help="The name of the table to query (e.g., 'Patient').")
@@ -177,7 +191,7 @@ def setup_arg_parser():
     
     return parser
 
-def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None):
+def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None, split_output=False, filename_template="{PatientID}"):
     """
     Format and output query results based on the specified format and destination.
     
@@ -187,6 +201,8 @@ def handle_output(results_envelope, output_file_path, query_display_name, effect
         query_display_name: Display name of the query for logging
         effective_format: Output format ('json', 'csv', 'tsv', 'stdout')
         metadata_dict: Optional metadata dictionary to include
+        split_output: Whether to save each row as a separate file
+        filename_template: Template for naming individual output files when split_output is True
     """
     logger = logging.getLogger("main")
     output_formatter = OutputFormatter()
@@ -219,32 +235,98 @@ def handle_output(results_envelope, output_file_path, query_display_name, effect
                     result[f"{field_prefix}_details"] = info.details
                     
             processed_results_for_tabular.append(result)
-    
-    # Output to file if specified
+      # Output to file if specified
     if output_file_path:
-        with open(output_file_path, 'w', encoding='utf-8', newline='') as f:
-            if effective_format == 'json':
-                f.write(output_formatter.format_as_json(results_envelope, metadata_dict))
-            elif effective_format == 'csv':
-                if metadata_summary:
-                    f.write(metadata_summary + '\n')
-                f.write(output_formatter.format_as_csv(processed_results_for_tabular))
-            elif effective_format == 'tsv':
-                if metadata_summary:
-                    f.write(metadata_summary + '\n')
-                f.write(output_formatter.format_as_tsv(processed_results_for_tabular))
-            elif effective_format == 'stdout':
-                if metadata_summary:
-                    f.write(metadata_summary + '\n')
-                import io
-                buf = io.StringIO()
-                output_formatter.format_as_console_table(results_envelope, stream=buf)
-                f.write(buf.getvalue())
-            else:
-                logger.error(f"Unknown output format: {effective_format}")
-                print(f"Unknown output format: {effective_format}", file=sys.stderr)
-                return
-        logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")    # Output to stdout
+        # Split output - save each row as a separate file
+        if split_output and processed_results_for_tabular and len(processed_results_for_tabular) > 0:
+            # Get the directory and base filename from the output_file_path
+            output_dir = os.path.dirname(output_file_path)
+            if not output_dir:
+                output_dir = os.getcwd()
+            
+            # Get the file extension from the original output path
+            _, file_ext = os.path.splitext(output_file_path)
+            if not file_ext:
+                file_ext = '.' + effective_format if effective_format != 'stdout' else '.txt'
+            
+            files_saved = 0
+            for row_data in processed_results_for_tabular:
+                try:
+                    # Generate the filename using the template
+                    try:
+                        row_filename = filename_template.format(**row_data)
+                    except KeyError as e:
+                        # If the field doesn't exist, use a default fallback
+                        logger.warning(f"Field {e} not found in row data. Using a generic filename.")
+                        row_filename = f"output_{files_saved + 1}"
+                    
+                    # Sanitize the filename
+                    row_filename = ''.join(c for c in row_filename if c.isalnum() or c in '-_')
+                    if not row_filename:
+                        row_filename = f"output_{files_saved + 1}"
+                    
+                    # Create the full file path
+                    row_file_path = os.path.join(output_dir, f"{row_filename}{file_ext}")
+                    
+                    # Prepare single-row data
+                    row_metadata = metadata_dict.copy() if metadata_dict else {}
+                    row_metadata['row_count_fetched'] = 1
+                    
+                    with open(row_file_path, 'w', encoding='utf-8', newline='') as f:
+                        if effective_format == 'json':
+                            f.write(output_formatter.format_as_json([row_data], row_metadata))
+                        elif effective_format == 'csv':
+                            if metadata_summary:
+                                f.write(metadata_summary + '\n')
+                            f.write(output_formatter.format_as_csv([row_data]))
+                        elif effective_format == 'tsv':
+                            if metadata_summary:
+                                f.write(metadata_summary + '\n')
+                            f.write(output_formatter.format_as_tsv([row_data]))
+                        elif effective_format == 'stdout':
+                            if metadata_summary:
+                                f.write(metadata_summary + '\n')
+                            import io
+                            buf = io.StringIO()
+                            output_formatter.format_as_console_table([row_data], stream=buf)
+                            f.write(buf.getvalue())
+                        else:
+                            logger.error(f"Unknown output format: {effective_format}")
+                            continue
+                    
+                    files_saved += 1
+                    logger.debug(f"Saved row data to {row_file_path}")
+                
+                except Exception as e:
+                    logger.error(f"Error saving split output file for row: {e}")
+            
+            logger.info(f"Saved {files_saved} individual files for '{query_display_name}' in {output_dir}")
+        
+        # Regular output - save as single file
+        else:
+            with open(output_file_path, 'w', encoding='utf-8', newline='') as f:
+                if effective_format == 'json':
+                    f.write(output_formatter.format_as_json(results_envelope, metadata_dict))
+                elif effective_format == 'csv':
+                    if metadata_summary:
+                        f.write(metadata_summary + '\n')
+                    f.write(output_formatter.format_as_csv(processed_results_for_tabular))
+                elif effective_format == 'tsv':
+                    if metadata_summary:
+                        f.write(metadata_summary + '\n')
+                    f.write(output_formatter.format_as_tsv(processed_results_for_tabular))
+                elif effective_format == 'stdout':
+                    if metadata_summary:
+                        f.write(metadata_summary + '\n')
+                    import io
+                    buf = io.StringIO()
+                    output_formatter.format_as_console_table(results_envelope, stream=buf)
+                    f.write(buf.getvalue())
+                else:
+                    logger.error(f"Unknown output format: {effective_format}")
+                    print(f"Unknown output format: {effective_format}", file=sys.stderr)
+                    return
+            logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")# Output to stdout
     else:
         if effective_format == 'json':
             print(output_formatter.format_as_json(results_envelope, metadata_dict))
@@ -373,8 +455,7 @@ def main():
             and v is not None
         }
         metadata_dict['parameters'] = base_params_for_metadata
-        
-        # Add batch-specific metadata if available (populated by the handler)
+          # Add batch-specific metadata if available (populated by the handler)
         if hasattr(args, 'batch_info') and args.batch_info:
             metadata_dict['batch_processing_summary'] = args.batch_info
             # Refine status for batch
@@ -394,7 +475,13 @@ def main():
         else:  # Single query, no results
             metadata_dict['status'] = "success_no_data"
         
-        handle_output(results, output_file_path, query_display_name, effective_format, metadata_dict)
+        # Get split output parameters
+        split_output = getattr(args, 'split_output', False)
+        filename_template = getattr(args, 'filename_template', "{PatientID}")
+        
+        # Call handle_output with the new parameters
+        handle_output(results, output_file_path, query_display_name, effective_format, 
+                     metadata_dict, split_output, filename_template)
     
     logger.info(f"--- {query_display_name} finished ---")
 
