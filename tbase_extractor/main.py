@@ -13,10 +13,11 @@ from .sql_interface.query_manager import QueryManager, QueryTemplateNotFoundErro
 from .sql_interface.output_formatter import OutputFormatter
 from .matching import FuzzyMatcher, PatientSearchStrategy
 from .matching.models import MatchInfo, MatchCandidate
+from .config import DOB_FORMAT, LOG_FORMAT, LOGGER_NAME, DEFAULT_FILE_ENCODING
+from .output_handler import handle_output, determine_output_format
+from .metadata import create_metadata_dict
 
 load_dotenv()
-
-DOB_FORMAT = "%Y-%m-%d"  # Define the expected date format
 
 def parse_dob_str(dob_str: Optional[str], logger: logging.Logger) -> Optional[date]:
     """Parses a DOB string and returns a date object or None if invalid."""
@@ -28,32 +29,7 @@ def parse_dob_str(dob_str: Optional[str], logger: logging.Logger) -> Optional[da
         logger.error(f"Invalid Date of Birth format for '{dob_str}'. Please use '{DOB_FORMAT}' (e.g., 1990-12-31).")
         raise ValueError(f"Invalid Date of Birth format: {dob_str}")
 
-def determine_output_format(user_format: Optional[str], output_file_path: Optional[str], logger: logging.Logger) -> str:
-    """Determines the effective output format."""
-    if user_format:
-        return user_format
-    if output_file_path:
-        _filename, ext = os.path.splitext(output_file_path)
-        ext = ext.lower()
-        if ext == '.json':
-            return 'json'
-        elif ext == '.csv':
-            return 'csv'
-        elif ext == '.tsv':
-            return 'tsv'
-        else:
-            if ext:
-                logger.warning(
-                    f"Output file extension '{ext}' for '{output_file_path}' is not recognized. "
-                    f"Defaulting to 'json' format."
-                )
-            else:
-                logger.warning(
-                    f"No output file extension provided for '{output_file_path}'. "
-                    f"Defaulting to 'json' format."
-                )
-            return 'json'
-    return 'stdout'  # Default if no file and no format specified
+
 
 def setup_arg_parser():
     parser = argparse.ArgumentParser(
@@ -191,171 +167,16 @@ def setup_arg_parser():
     
     return parser
 
-def handle_output(results_envelope, output_file_path, query_display_name, effective_format, metadata_dict=None, split_output=False, filename_template="{PatientID}"):
-    """
-    Format and output query results based on the specified format and destination.
-    
-    Args:
-        results_envelope: Query results to format
-        output_file_path: Path to save results to (None for stdout)
-        query_display_name: Display name of the query for logging
-        effective_format: Output format ('json', 'csv', 'tsv', 'stdout')
-        metadata_dict: Optional metadata dictionary to include
-        split_output: Whether to save each row as a separate file
-        filename_template: Template for naming individual output files when split_output is True
-    """
-    logger = logging.getLogger("main")
-    output_formatter = OutputFormatter()
-    
-    # Process metadata for non-JSON formats (as comments)
-    metadata_summary = ''
-    if metadata_dict:
-        metadata_lines = [f"# {k}: {v}" for k, v in metadata_dict.items()]
-        metadata_summary = '\n'.join(metadata_lines)
-    
-    # Check if we need to process MatchCandidate objects for CSV/TSV formats
-    processed_results_for_tabular = results_envelope
-    if isinstance(results_envelope, list) and results_envelope and hasattr(results_envelope[0], 'match_fields_info') and hasattr(results_envelope[0], 'overall_score'):
-        processed_results_for_tabular = []
-        for candidate in results_envelope:
-            result = {
-                'overall_score': candidate.overall_score,
-                'primary_match_type': candidate.primary_match_type,
-                **candidate.db_record
-            }
-            
-            # Add match details for each field
-            for info in candidate.match_fields_info:
-                field_prefix = info.field_name
-                result[f"{field_prefix}_input_value"] = info.input_value
-                result[f"{field_prefix}_db_value"] = info.db_value
-                result[f"{field_prefix}_match_type"] = info.match_type
-                result[f"{field_prefix}_similarity"] = info.similarity_score
-                if info.details:
-                    result[f"{field_prefix}_details"] = info.details
-                    
-            processed_results_for_tabular.append(result)
-      # Output to file if specified
-    if output_file_path:
-        # Split output - save each row as a separate file
-        if split_output and processed_results_for_tabular and len(processed_results_for_tabular) > 0:
-            # Get the directory and base filename from the output_file_path
-            output_dir = os.path.dirname(output_file_path)
-            if not output_dir:
-                output_dir = os.getcwd()
-            
-            # Get the file extension from the original output path
-            _, file_ext = os.path.splitext(output_file_path)
-            if not file_ext:
-                file_ext = '.' + effective_format if effective_format != 'stdout' else '.txt'
-            
-            files_saved = 0
-            for row_data in processed_results_for_tabular:
-                try:
-                    # Generate the filename using the template
-                    try:
-                        row_filename = filename_template.format(**row_data)
-                    except KeyError as e:
-                        # If the field doesn't exist, use a default fallback
-                        logger.warning(f"Field {e} not found in row data. Using a generic filename.")
-                        row_filename = f"output_{files_saved + 1}"
-                    
-                    # Sanitize the filename
-                    row_filename = ''.join(c for c in row_filename if c.isalnum() or c in '-_')
-                    if not row_filename:
-                        row_filename = f"output_{files_saved + 1}"
-                    
-                    # Create the full file path
-                    row_file_path = os.path.join(output_dir, f"{row_filename}{file_ext}")
-                    
-                    # Prepare single-row data
-                    row_metadata = metadata_dict.copy() if metadata_dict else {}
-                    row_metadata['row_count_fetched'] = 1
-                    
-                    with open(row_file_path, 'w', encoding='utf-8', newline='') as f:
-                        if effective_format == 'json':
-                            f.write(output_formatter.format_as_json([row_data], row_metadata))
-                        elif effective_format == 'csv':
-                            if metadata_summary:
-                                f.write(metadata_summary + '\n')
-                            f.write(output_formatter.format_as_csv([row_data]))
-                        elif effective_format == 'tsv':
-                            if metadata_summary:
-                                f.write(metadata_summary + '\n')
-                            f.write(output_formatter.format_as_tsv([row_data]))
-                        elif effective_format == 'stdout':
-                            if metadata_summary:
-                                f.write(metadata_summary + '\n')
-                            import io
-                            buf = io.StringIO()
-                            output_formatter.format_as_console_table([row_data], stream=buf)
-                            f.write(buf.getvalue())
-                        else:
-                            logger.error(f"Unknown output format: {effective_format}")
-                            continue
-                    
-                    files_saved += 1
-                    logger.debug(f"Saved row data to {row_file_path}")
-                
-                except Exception as e:
-                    logger.error(f"Error saving split output file for row: {e}")
-            
-            logger.info(f"Saved {files_saved} individual files for '{query_display_name}' in {output_dir}")
-        
-        # Regular output - save as single file
-        else:
-            with open(output_file_path, 'w', encoding='utf-8', newline='') as f:
-                if effective_format == 'json':
-                    f.write(output_formatter.format_as_json(results_envelope, metadata_dict))
-                elif effective_format == 'csv':
-                    if metadata_summary:
-                        f.write(metadata_summary + '\n')
-                    f.write(output_formatter.format_as_csv(processed_results_for_tabular))
-                elif effective_format == 'tsv':
-                    if metadata_summary:
-                        f.write(metadata_summary + '\n')
-                    f.write(output_formatter.format_as_tsv(processed_results_for_tabular))
-                elif effective_format == 'stdout':
-                    if metadata_summary:
-                        f.write(metadata_summary + '\n')
-                    import io
-                    buf = io.StringIO()
-                    output_formatter.format_as_console_table(results_envelope, stream=buf)
-                    f.write(buf.getvalue())
-                else:
-                    logger.error(f"Unknown output format: {effective_format}")
-                    print(f"Unknown output format: {effective_format}", file=sys.stderr)
-                    return
-            logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")# Output to stdout
-    else:
-        if effective_format == 'json':
-            print(output_formatter.format_as_json(results_envelope, metadata_dict))
-        elif effective_format == 'csv':
-            if metadata_summary:
-                print(metadata_summary)
-            print(output_formatter.format_as_csv(processed_results_for_tabular))
-        elif effective_format == 'tsv':
-            if metadata_summary:
-                print(metadata_summary)
-            print(output_formatter.format_as_tsv(processed_results_for_tabular))
-        elif effective_format == 'stdout':
-            if metadata_summary:
-                print(metadata_summary)
-            output_formatter.format_as_console_table(results_envelope, stream=sys.stdout)
-        else:
-            logger.error(f"Unknown output format: {effective_format}")
-            print(f"Unknown output format: {effective_format}", file=sys.stderr)
-            return
+
 
 def setup_logging(debug: bool = False, log_file: str = None):
     log_level = logging.DEBUG if debug else logging.INFO
-    log_format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
     handlers = [logging.StreamHandler(sys.stdout)]
     if log_file:
-        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+        handlers.append(logging.FileHandler(log_file, encoding=DEFAULT_FILE_ENCODING))
     logging.basicConfig(
         level=log_level,
-        format=log_format,
+        format=LOG_FORMAT,
         handlers=handlers,
         force=True
     )
@@ -375,7 +196,7 @@ def main():
     debug = getattr(args, 'debug', False)
     log_file = os.getenv('SQL_APP_LOGFILE', None)
     setup_logging(debug, log_file)  # Ensure logger is configured
-    logger = logging.getLogger("tbase_extractor.main")  # Use a specific logger name
+    logger = logging.getLogger(LOGGER_NAME)  # Use the configured logger name
 
     logger.debug(f"Parsed arguments: {args}")
 
@@ -428,52 +249,19 @@ def main():
         sys.exit(1)
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
-        sys.exit(1)
-
-    # 3. Output Handling
+        sys.exit(1)    # 3. Output Handling
     if results is not None:  # results can be an empty list
         output_file_path = getattr(args, 'output', None)
         user_format_arg = getattr(args, 'format', None)
         
         # Use the new utility function
-        effective_format = determine_output_format(user_format_arg, output_file_path, logger)
-          # Enhanced metadata
-        metadata_dict = {
-            'query_timestamp_utc': query_start_time.isoformat(),
-            'query_name': args.query_name if args.action == 'query' else args.action,
-            'query_display_name': query_display_name,
-            'tool_version': "0.1.0",  # Get from package version
-            'execution_duration_ms': execution_duration_ms,
-            'row_count_fetched': len(results),
-        }
+        effective_format = determine_output_format(user_format_arg, output_file_path)
         
-        # Base parameters for metadata
-        base_params_for_metadata = {
-            k: str(v) for k, v in vars(args).items() 
-            if k in ['first_name', 'last_name', 'dob', 'patient_id', 'query_name', 'table_name', 'table_schema', 
-                    'input_csv', 'id_column']
-            and v is not None
-        }
-        metadata_dict['parameters'] = base_params_for_metadata
-          # Add batch-specific metadata if available (populated by the handler)
-        if hasattr(args, 'batch_info') and args.batch_info:
-            metadata_dict['batch_processing_summary'] = args.batch_info
-            # Refine status for batch
-            if results:
-                if args.batch_info['ids_processed_successfully'] == args.batch_info['total_ids_in_csv']:
-                    metadata_dict['status'] = "batch_success_all_processed"
-                elif args.batch_info['ids_processed_successfully'] > 0:
-                    metadata_dict['status'] = "batch_partial_success"
-                else:  # No IDs processed successfully, but CSV might have had IDs
-                    metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
-            elif args.batch_info['total_ids_in_csv'] > 0:  # CSV had IDs, but no results (all failed or no data)
-                metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
-            else:  # No IDs in CSV or CSV error
-                metadata_dict['status'] = "batch_input_error_or_empty"
-        elif results:  # Single query with results
-            metadata_dict['status'] = "success"
-        else:  # Single query, no results
-            metadata_dict['status'] = "success_no_data"
+        # Create metadata using the new utility function
+        metadata_dict = create_metadata_dict(
+            query_start_time, execution_duration_ms, args, 
+            query_display_name, results
+        )
         
         # Get split output parameters
         split_output = getattr(args, 'split_output', False)
