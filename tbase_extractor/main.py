@@ -134,13 +134,13 @@ def setup_arg_parser():
         '--min-match-score', type=float, default=0.3, metavar='SCORE',
         help='Minimum overall match score required (0.0 to 1.0, default: 0.3) for "patient-fuzzy-search".'
     )
-
+    
     parser_query.add_argument(
         '--format', '-f',
         type=str,
-        choices=['json', 'csv', 'tsv', 'stdout'],
+        choices=['json', 'csv', 'tsv', 'txt', 'stdout'],
         default=None,
-        help='Output format: json, csv, tsv, or stdout (pretty table to console). Inferred from -o extension if not set.'
+        help='Output format: json, csv, tsv, txt, or stdout (pretty table to console). Inferred from -o extension if not set.'
     )
     
     # New arguments for split file output

@@ -16,11 +16,12 @@ LOGGER_NAME = "tbase_extractor.main"
 
 # File handling
 DEFAULT_FILE_ENCODING = 'utf-8'
-VALID_OUTPUT_FORMATS = ['json', 'csv', 'tsv', 'stdout']
+VALID_OUTPUT_FORMATS = ['json', 'csv', 'tsv', 'txt', 'stdout']
 FILE_EXTENSION_MAP = {
     '.json': 'json',
     '.csv': 'csv',
-    '.tsv': 'tsv'
+    '.tsv': 'tsv',
+    '.txt': 'txt'
 }
 
 # Database configuration defaults

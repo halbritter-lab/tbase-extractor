@@ -96,6 +96,9 @@ def write_output_to_file(
             if metadata_summary:
                 f.write(metadata_summary + '\n')
             f.write(output_formatter.format_as_tsv(processed_results))
+        elif effective_format == 'txt':
+            # For txt format, no metadata or headers - just one word per line
+            f.write(output_formatter.format_as_txt(processed_results))
         elif effective_format == 'stdout':
             if metadata_summary:
                 f.write(metadata_summary + '\n')
@@ -127,6 +130,9 @@ def write_output_to_stdout(
         if metadata_summary:
             print(metadata_summary)
         print(output_formatter.format_as_tsv(processed_results))
+    elif effective_format == 'txt':
+        # For txt format, no metadata or headers - just one word per line
+        print(output_formatter.format_as_txt(processed_results))
     elif effective_format == 'stdout':
         if metadata_summary:
             print(metadata_summary)

@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 import sys
@@ -59,7 +59,7 @@ class OutputFormatter:
         """
         Formats the data payload and metadata into a structured JSON string.
 
-        The output JSON will have two top-level keys: ""metadata"" and ""data"".
+        The output JSON will have two top-level keys: "metadata" and "data".
         Handles date/datetime objects using a custom serializer.
 
         Args:
@@ -96,8 +96,7 @@ class OutputFormatter:
                 structured_output["data"] = processed_payload
 
             return json.dumps(structured_output, default=OutputFormatter._datetime_serializer, indent=indent)
-        except (TypeError, ValueError) as e:
-            logger.error(f"Error during JSON serialization: {e}")
+        except (TypeError, ValueError) as e:            logger.error(f"Error during JSON serialization: {e}")
             # Re-raise for proper error handling by caller
             raise
 
@@ -112,7 +111,7 @@ class OutputFormatter:
         writer.writeheader()
         writer.writerows(data)
         return output.getvalue()
-    
+        
     @staticmethod
     def format_as_tsv(data: List[Dict[str, Any]]) -> str:
         """Formats the data into a TSV string."""
