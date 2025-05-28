@@ -128,36 +128,36 @@ class OutputFormatter:
     @staticmethod
     def format_as_txt(data: List[Dict[str, Any]]) -> str:
         """
-        Formats the data as a simple text file with one word per line.
+        Formats the data as a simple text file with one cell value per line.
         No metadata or headers are included.
         
         Args:
             data (List[Dict[str, Any]]): The data to format
             
         Returns:
-            str: Text with one word per line
+            str: Text with one cell value per line
         """
         if not data:
             return ""
             
-        words = []
-        # Extract all values from all records and split them into words
+        cell_values = []
+        # Extract all values from all records and add each complete value as a line
         for record in data:
             for value in record.values():
                 if value is not None:
-                    # Convert to string and split by whitespace
+                    # Convert to string if needed
                     if isinstance(value, (int, float, bool)):
                         value = str(value)
                     elif not isinstance(value, str):
                         continue
                         
-                    # Split string values by whitespace and add each word
-                    for word in str(value).split():
-                        if word.strip():  # Skip empty words
-                            words.append(word.strip())
+                    # Add the complete cell value as a single line (strip whitespace)
+                    cell_value = str(value).strip()
+                    if cell_value:  # Skip empty values
+                        cell_values.append(cell_value)
         
-        # Join all words with newlines
-        return '\n'.join(words)
+        # Join all cell values with newlines
+        return '\n'.join(cell_values)
 
     @staticmethod
     def format_as_txt_optimized(data: List[Dict[str, Any]]) -> str:
@@ -201,7 +201,7 @@ class OutputFormatter:
                 varying_data.append(varying_record)
         
         # Build output
-        words = []
+        cell_values = []
         
         # Add patient information first
         for value in patient_info.values():
@@ -211,13 +211,14 @@ class OutputFormatter:
                 elif not isinstance(value, str):
                     continue
                     
-                for word in str(value).split():
-                    if word.strip():
-                        words.append(word.strip())
+                # Add the complete cell value as a single line (strip whitespace)
+                cell_value = str(value).strip()
+                if cell_value:  # Skip empty values
+                    cell_values.append(cell_value)
         
         # Add separator if we have both patient info and varying data
         if patient_info and varying_data:
-            words.append("---")  # Separator between patient info and diagnoses
+            cell_values.append("---")  # Separator between patient info and diagnoses
         
         # Add varying information
         for record in varying_data:
@@ -228,11 +229,12 @@ class OutputFormatter:
                     elif not isinstance(value, str):
                         continue
                         
-                    for word in str(value).split():
-                        if word.strip():
-                            words.append(word.strip())
+                    # Add the complete cell value as a single line (strip whitespace)
+                    cell_value = str(value).strip()
+                    if cell_value:  # Skip empty values
+                        cell_values.append(cell_value)
         
-        return '\n'.join(words)
+        return '\n'.join(cell_values)
 
     @staticmethod
     def format_as_json_optimized(data: List[Dict[str, Any]], metadata: Dict[str, Any] = None, indent: Optional[int] = 4) -> str:

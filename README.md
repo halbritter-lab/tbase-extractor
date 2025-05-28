@@ -39,7 +39,7 @@ Key Libraries Used:
 *   **Flexible Output:**
     *   Prints results to the console in a formatted table (`tabulate` preferred).    *   Saves results to a specified file in **JSON**, **CSV**, **TSV**, or **TXT** format (see `--format`).
     *   Use `--format` to select output type: `json`, `csv`, `tsv`, `txt`, or `stdout` (pretty table to console).
-    *   The `txt` format outputs one word per line without metadata or headers.
+    *   The `txt` format outputs one cell value per line without metadata or headers.
     *   If `--output` is not given, formatted output is printed to the console.
 *   **Batch Processing:**
     *   Process multiple Patient IDs in a single query using a CSV input file.
