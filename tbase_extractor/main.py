@@ -384,22 +384,36 @@ def main():
             query_start_time, execution_duration_ms, args, 
             query_display_name, results
         )
-        
-        # Add batch-specific metadata if available (populated by the handler)
+          # Add batch-specific metadata if available (populated by the handler)
         if hasattr(args, 'batch_info') and args.batch_info:
             metadata_dict['batch_processing_summary'] = args.batch_info
-            # Refine status for batch
+            # Refine status for batch - handle both ID-based and demographics-based batches
             if results:
-                if args.batch_info['ids_processed_successfully'] == args.batch_info['total_ids_in_csv']:
-                    metadata_dict['status'] = "batch_success_all_processed"
-                elif args.batch_info['ids_processed_successfully'] > 0:
-                    metadata_dict['status'] = "batch_partial_success"
-                else:  # No IDs processed successfully, but CSV might have had IDs
+                # For ID-based batches
+                if 'ids_processed_successfully' in args.batch_info and 'total_ids_in_csv' in args.batch_info:
+                    if args.batch_info['ids_processed_successfully'] == args.batch_info['total_ids_in_csv']:
+                        metadata_dict['status'] = "batch_success_all_processed"
+                    elif args.batch_info['ids_processed_successfully'] > 0:
+                        metadata_dict['status'] = "batch_partial_success"
+                    else:
+                        metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
+                # For demographics-based batches
+                elif 'rows_processed_successfully' in args.batch_info and 'total_rows_in_csv' in args.batch_info:
+                    if args.batch_info['rows_processed_successfully'] == args.batch_info['total_rows_in_csv']:
+                        metadata_dict['status'] = "batch_success_all_processed"
+                    elif args.batch_info['rows_processed_successfully'] > 0:
+                        metadata_dict['status'] = "batch_partial_success"
+                    else:
+                        metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
+                else:
+                    metadata_dict['status'] = "batch_success"
+            else:
+                # No results - check if we had input data
+                total_input = args.batch_info.get('total_ids_in_csv', args.batch_info.get('total_rows_in_csv', 0))
+                if total_input > 0:
                     metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
-            elif args.batch_info['total_ids_in_csv'] > 0:  # CSV had IDs, but no results (all failed or no data)
-                metadata_dict['status'] = "batch_processed_no_data_or_all_failed"
-            else:  # No IDs in CSV or CSV error
-                metadata_dict['status'] = "batch_input_error_or_empty"
+                else:
+                    metadata_dict['status'] = "batch_input_error_or_empty"
         elif results:  # Single query with results
             metadata_dict['status'] = "success"
         else:  # Single query, no results
@@ -871,10 +885,9 @@ def handle_batch_search_demographics(args: argparse.Namespace, query_manager: Qu
     
     all_results = []
     successful_count = 0
-    failed_rows_details = {}
-    
-    # Use fuzzy matching if specified
-    use_fuzzy = getattr(args, 'fuzzy_threshold', None) is not None
+    failed_rows_details = {}    
+    # Force exact matching only for batch-search-demographics
+    logger.info("Using exact matching only for batch-search-demographics command")
     for patient in patients_data:
         row_num = patient.get('_row_number', 0)
         try:
@@ -897,59 +910,34 @@ def handle_batch_search_demographics(args: argparse.Namespace, query_manager: Qu
                     failed_rows_details[row_num] = f"Invalid DOB format: {dob_str}"
                     continue
             
-            logger.debug(f"Batch processing: Searching for patient FirstName={first_name}, LastName={last_name}, DOB={dob_str}")
-            
-            if use_fuzzy:
-                # Use fuzzy search for this patient
-                fuzzy_matcher = FuzzyMatcher(
-                    string_similarity_threshold=args.fuzzy_threshold,
-                    date_year_tolerance=args.dob_year_tolerance
-                )
-                
-                search_params = {
-                    'first_name': first_name,
-                    'last_name': last_name,
-                    'dob': dob_object
-                }
-                
-                strategy = PatientSearchStrategy(db, query_manager, fuzzy_matcher)
-                include_diagnoses = getattr(args, 'include_diagnoses', False)
-                results = strategy.search(search_params, min_overall_score=args.min_match_score, include_diagnoses=include_diagnoses)
-                
-                if results:
-                    all_results.extend(results)
-                    successful_count += 1
-                else:
-                    logger.info(f"Fuzzy search for Row {row_num} completed, but no matching patients were found.")
+            logger.debug(f"Batch processing: Searching for patient FirstName={first_name}, LastName={last_name}, DOB={dob_str}")            
+            # Use exact match only - DOB is required for exact matching
+            if not dob_object:
+                logger.warning(f"Row {row_num}: DOB is required for exact match. Skipping.")
+                failed_rows_details[row_num] = "DOB is required for exact match"
+                continue
+            # Check if we're using dynamic query manager and pass include_diagnoses parameter
+            include_diagnoses = getattr(args, 'include_diagnoses', False)
+            if hasattr(query_manager, 'get_patient_by_name_dob_query') and 'include_diagnoses' in query_manager.get_patient_by_name_dob_query.__code__.co_varnames:
+                sql, params = query_manager.get_patient_by_name_dob_query(first_name, last_name, dob_object, include_diagnoses=include_diagnoses)
             else:
-                # Use exact match through patient-by-name-dob query
-                if not dob_object:
-                    logger.warning(f"Row {row_num}: DOB is required for exact match. Skipping.")
-                    failed_rows_details[row_num] = "DOB is required for exact match"
-                    continue
-                
-                # Check if we're using dynamic query manager and pass include_diagnoses parameter
-                include_diagnoses = getattr(args, 'include_diagnoses', False)
-                if hasattr(query_manager, 'get_patient_by_name_dob_query') and 'include_diagnoses' in query_manager.get_patient_by_name_dob_query.__code__.co_varnames:
-                    sql, params = query_manager.get_patient_by_name_dob_query(first_name, last_name, dob_object, include_diagnoses=include_diagnoses)
-                else:
-                    sql, params = query_manager.get_patient_by_name_dob_query(first_name, last_name, dob_object)
-                
-                if db.execute_query(sql, params):
-                    fetched_data = db.fetch_results()
-                    if fetched_data is not None:
-                        if fetched_data:  # Only count as successful if data was found
-                            all_results.extend(fetched_data)
-                            successful_count += 1
-                        else:
-                            logger.info(f"Row {row_num}: No data found for FirstName='{first_name}', LastName='{last_name}', DOB='{dob_str}'")
-                            failed_rows_details[row_num] = "No matching patient found"
+                sql, params = query_manager.get_patient_by_name_dob_query(first_name, last_name, dob_object)
+            
+            if db.execute_query(sql, params):
+                fetched_data = db.fetch_results()
+                if fetched_data is not None:
+                    if fetched_data:  # Only count as successful if data was found
+                        all_results.extend(fetched_data)
+                        successful_count += 1
                     else:
-                        logger.error(f"Error fetching results for Row {row_num}")
-                        failed_rows_details[row_num] = "Error fetching results"
+                        logger.info(f"Row {row_num}: No data found for FirstName='{first_name}', LastName='{last_name}', DOB='{dob_str}'")
+                        failed_rows_details[row_num] = "No matching patient found"
                 else:
-                    logger.error(f"Query execution failed for Row {row_num}")
-                    failed_rows_details[row_num] = "Query execution failed"
+                    logger.error(f"Error fetching results for Row {row_num}")
+                    failed_rows_details[row_num] = "Error fetching results"
+            else:
+                logger.error(f"Query execution failed for Row {row_num}")
+                failed_rows_details[row_num] = "Query execution failed"
         
         except Exception as e:
             logger.error(f"Error processing Row {row_num}: {e}")

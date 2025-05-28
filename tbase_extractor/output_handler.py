@@ -169,6 +169,28 @@ def generate_split_filename(
     return row_filename
 
 
+def group_results_by_patient(
+    processed_results: List[Dict[str, Any]],
+    filename_template: str
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Group results by patient based on the filename template fields."""
+    grouped_data = {}
+    
+    for i, row_data in enumerate(processed_results, 1):
+        try:
+            # Generate the same key that would be used for filename
+            group_key = generate_split_filename(row_data, filename_template, i)
+        except KeyError as e:
+            logger.warning(f"Field {e} not found in row data for grouping. Using generic key.")
+            group_key = f"patient_{i}"
+        
+        if group_key not in grouped_data:
+            grouped_data[group_key] = []
+        grouped_data[group_key].append(row_data)
+    
+    return grouped_data
+
+
 def handle_split_output(
     output_file_path: str,
     processed_results: List[Dict[str, Any]],
@@ -178,7 +200,7 @@ def handle_split_output(
     output_formatter: OutputFormatter,
     optimize_txt: bool = False
 ) -> int:
-    """Handle split output - save each row as a separate file."""
+    """Handle split output - save data grouped by patient as separate files."""
     if not processed_results:
         return 0
     
@@ -187,27 +209,30 @@ def handle_split_output(
     if not file_ext:
         file_ext = '.' + effective_format if effective_format != 'stdout' else '.txt'
     
+    # Group results by patient
+    grouped_data = group_results_by_patient(processed_results, filename_template)
+    
     files_saved = 0
-    for i, row_data in enumerate(processed_results, 1):
+    for group_key, patient_rows in grouped_data.items():
         try:
-            row_filename = generate_split_filename(row_data, filename_template, i)
-            row_file_path = os.path.join(output_dir, f"{row_filename}{file_ext}")
+            row_file_path = os.path.join(output_dir, f"{group_key}{file_ext}")
             
-            # Prepare single-row metadata
-            row_metadata = metadata_dict.copy() if metadata_dict else {}
-            row_metadata['row_count_fetched'] = 1
+            # Prepare metadata for this patient group
+            group_metadata = metadata_dict.copy() if metadata_dict else {}
+            group_metadata['row_count_fetched'] = len(patient_rows)
             
             write_output_to_file(
-                row_file_path, [row_data], [row_data], 
-                effective_format, row_metadata, output_formatter, optimize_txt
+                row_file_path, patient_rows, patient_rows, 
+                effective_format, group_metadata, output_formatter, optimize_txt
             )
             
             files_saved += 1
-            logger.debug(f"Saved row data to {row_file_path}")
+            logger.debug(f"Saved {len(patient_rows)} rows for patient group '{group_key}' to {row_file_path}")
             
         except Exception as e:
-            logger.error(f"Error saving split output file for row {i}: {e}")
+            logger.error(f"Error saving split output file for patient group '{group_key}': {e}")
     
+    logger.info(f"Created {files_saved} patient files from {len(processed_results)} total rows")
     return files_saved
 
 
