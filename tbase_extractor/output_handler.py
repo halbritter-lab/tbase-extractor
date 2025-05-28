@@ -86,20 +86,33 @@ def write_output_to_file(
     """Write formatted results to a file."""
     metadata_summary = format_metadata_summary(metadata_dict)
     
+    # Check if we should use optimized formatting for patient-diagnosis data
+    use_optimized = should_use_optimized_format(processed_results)
+    
     with open(file_path, 'w', encoding=DEFAULT_FILE_ENCODING, newline='') as f:
         if effective_format == 'json':
-            f.write(output_formatter.format_as_json(results_envelope, metadata_dict))
+            if use_optimized:
+                logger.debug("Using optimized JSON format for patient-diagnosis data")
+                f.write(output_formatter.format_as_json_optimized(processed_results, metadata_dict))
+            else:
+                f.write(output_formatter.format_as_json(results_envelope, metadata_dict))
         elif effective_format == 'csv':
             if metadata_summary:
                 f.write(metadata_summary + '\n')
-            f.write(output_formatter.format_as_csv(processed_results))
+            if use_optimized:
+                logger.debug("Using optimized CSV format for patient-diagnosis data")
+                f.write(output_formatter.format_as_csv_optimized(processed_results))
+            else:
+                f.write(output_formatter.format_as_csv(processed_results))
         elif effective_format == 'tsv':
             if metadata_summary:
                 f.write(metadata_summary + '\n')
             f.write(output_formatter.format_as_tsv(processed_results))
         elif effective_format == 'txt':
-            # For txt format, no metadata or headers - use optimized format if requested
-            if optimize_txt:
+            # For txt format, no metadata or headers - use optimized format if requested or auto-detected
+            if optimize_txt or use_optimized:
+                if use_optimized:
+                    logger.debug("Using optimized TXT format for patient-diagnosis data")
                 f.write(output_formatter.format_as_txt_optimized(processed_results))
             else:
                 f.write(output_formatter.format_as_txt(processed_results))
@@ -125,19 +138,32 @@ def write_output_to_stdout(
     """Write formatted results to stdout."""
     metadata_summary = format_metadata_summary(metadata_dict)
     
+    # Check if we should use optimized formatting for patient-diagnosis data
+    use_optimized = should_use_optimized_format(processed_results)
+    
     if effective_format == 'json':
-        print(output_formatter.format_as_json(results_envelope, metadata_dict))
+        if use_optimized:
+            logger.debug("Using optimized JSON format for patient-diagnosis data")
+            print(output_formatter.format_as_json_optimized(processed_results, metadata_dict))
+        else:
+            print(output_formatter.format_as_json(results_envelope, metadata_dict))
     elif effective_format == 'csv':
         if metadata_summary:
             print(metadata_summary)
-        print(output_formatter.format_as_csv(processed_results))
+        if use_optimized:
+            logger.debug("Using optimized CSV format for patient-diagnosis data")
+            print(output_formatter.format_as_csv_optimized(processed_results))
+        else:
+            print(output_formatter.format_as_csv(processed_results))
     elif effective_format == 'tsv':
         if metadata_summary:
             print(metadata_summary)
         print(output_formatter.format_as_tsv(processed_results))
     elif effective_format == 'txt':
-        # For txt format, no metadata or headers - use optimized format if requested
-        if optimize_txt:
+        # For txt format, no metadata or headers - use optimized format if requested or auto-detected
+        if optimize_txt or use_optimized:
+            if use_optimized:
+                logger.debug("Using optimized TXT format for patient-diagnosis data")
             print(output_formatter.format_as_txt_optimized(processed_results))
         else:
             print(output_formatter.format_as_txt(processed_results))
@@ -234,6 +260,49 @@ def handle_split_output(
     
     logger.info(f"Created {files_saved} patient files from {len(processed_results)} total rows")
     return files_saved
+
+
+def should_use_optimized_format(processed_results: List[Dict[str, Any]]) -> bool:
+    """
+    Detect if the data contains patient-diagnosis joins that would benefit from optimization.
+    
+    Args:
+        processed_results: List of result dictionaries
+        
+    Returns:
+        bool: True if optimization should be applied
+    """
+    if not processed_results or len(processed_results) < 2:
+        return False
+    
+    # Check if we have both patient fields and diagnosis fields
+    first_record = processed_results[0]
+    
+    # Patient-related fields that typically remain constant
+    patient_fields = ['Name', 'Vorname', 'PatientID', 'FirstName', 'LastName', 'Geburtsdatum', 'DOB']
+    # Diagnosis/varying fields
+    varying_fields = ['ICD10', 'Bezeichnung', 'Diagnosis', 'Code', 'Description']
+    
+    # Check if we have both types of fields
+    has_patient_fields = any(field in first_record for field in patient_fields)
+    has_varying_fields = any(field in first_record for field in varying_fields)
+    
+    if not (has_patient_fields and has_varying_fields):
+        return False
+    
+    # Check if patient data is repeated across multiple rows
+    # Extract patient data from first two records
+    patient_data_first = {}
+    patient_data_second = {}
+    
+    for field in patient_fields:
+        if field in first_record:
+            patient_data_first[field] = first_record[field]
+        if field in processed_results[1]:
+            patient_data_second[field] = processed_results[1][field]
+    
+    # If patient data is identical between records, this indicates redundancy
+    return patient_data_first == patient_data_second and len(patient_data_first) > 0
 
 
 def handle_output(
