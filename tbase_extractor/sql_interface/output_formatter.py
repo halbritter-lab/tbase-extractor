@@ -58,6 +58,7 @@ class OutputFormatter:
     def format_as_json(data_payload: List[Any], metadata: Dict[str, Any] = None, indent: Optional[int] = 4) -> str:
         """
         Formats the data payload and metadata into a structured JSON string.
+        For multi-patient data, groups patients appropriately.
 
         The output JSON will have two top-level keys: ""metadata"" and ""data"".
         Handles date/datetime objects using a custom serializer.
@@ -81,12 +82,71 @@ class OutputFormatter:
             # Ensure indent is an integer or None
             if indent is not None and not isinstance(indent, int):
                 indent = 4  # Default to 4 spaces if indent is provided but not an integer
+            
+            # Check if we have multiple patients and structure accordingly
+            if isinstance(data_payload, list) and data_payload and isinstance(data_payload[0], dict):
+                # Identify patient-related fields
+                patient_fields = ['Name', 'Vorname', 'PatientID', 'FirstName', 'LastName', 'Geburtsdatum', 'DOB']
                 
-            # Create the structured output
-            structured_output = {
-                "metadata": metadata or {},
-                "data": data_payload
-            }
+                # Check for multiple patients
+                unique_patients = set()
+                for record in data_payload:
+                    patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+                    if any(val is not None for val in patient_key):
+                        unique_patients.add(patient_key)
+                
+                if len(unique_patients) > 1:
+                    # Multiple patients - group by patient
+                    patients_data = []
+                    current_patient_data = None
+                    current_patient_key = None
+                    
+                    for record in data_payload:
+                        patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+                        
+                        # If patient changed, start new patient group
+                        if patient_key != current_patient_key and any(val is not None for val in patient_key):
+                            if current_patient_data is not None:
+                                patients_data.append(current_patient_data)
+                            
+                            # Extract patient info
+                            patient_info = {}
+                            for field in patient_fields:
+                                if field in record and record[field] is not None:
+                                    patient_info[field] = record[field]
+                            
+                            current_patient_data = {
+                                "patient_info": patient_info,
+                                "records": []
+                            }
+                            current_patient_key = patient_key
+                        
+                        # Add record to current patient (or create default group if no patient info)
+                        if current_patient_data is None:
+                            current_patient_data = {"records": []}
+                        
+                        current_patient_data["records"].append(record)
+                    
+                    # Add the last patient
+                    if current_patient_data is not None:
+                        patients_data.append(current_patient_data)
+                    
+                    structured_output = {
+                        "metadata": metadata or {},
+                        "data": patients_data
+                    }
+                else:
+                    # Single patient or no patient grouping needed
+                    structured_output = {
+                        "metadata": metadata or {},
+                        "data": data_payload
+                    }
+            else:
+                # Not a list of dicts or special handling needed
+                structured_output = {
+                    "metadata": metadata or {},
+                    "data": data_payload
+                }
 
             # Convert MatchCandidate objects in data_payload to dictionaries if present
             if isinstance(data_payload, list) and data_payload and hasattr(data_payload[0], 'match_fields_info') and hasattr(data_payload[0], 'overall_score'):
@@ -129,34 +189,80 @@ class OutputFormatter:
     def format_as_txt(data: List[Dict[str, Any]]) -> str:
         """
         Formats the data as a simple text file with one cell value per line.
-        No metadata or headers are included.
+        For multi-patient data, groups patients with separators.
         
         Args:
             data (List[Dict[str, Any]]): The data to format
             
         Returns:
-            str: Text with one cell value per line
+            str: Text with one cell value per line, grouped by patient if multiple patients
         """
         if not data:
             return ""
-            
-        cell_values = []
-        # Extract all values from all records and add each complete value as a line
-        for record in data:
-            for value in record.values():
-                if value is not None:
-                    # Convert to string if needed
-                    if isinstance(value, (int, float, bool)):
-                        value = str(value)
-                    elif not isinstance(value, str):
-                        continue
-                        
-                    # Add the complete cell value as a single line (strip whitespace)
-                    cell_value = str(value).strip()
-                    if cell_value:  # Skip empty values
-                        cell_values.append(cell_value)
         
-        # Join all cell values with newlines
+        # Identify patient-related fields
+        patient_fields = ['Name', 'Vorname', 'PatientID', 'FirstName', 'LastName', 'Geburtsdatum', 'DOB']
+        
+        # Check if we have multiple patients by looking for different Name/Vorname combinations
+        unique_patients = set()
+        for record in data:
+            patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+            if any(val is not None for val in patient_key):
+                unique_patients.add(patient_key)
+        
+        # If we have multiple patients, group by patient
+        if len(unique_patients) > 1:
+            cell_values = []
+            current_patient = None
+            
+            for record in data:
+                # Get patient identifier for this record
+                patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+                
+                # If patient changed, add patient info and separator
+                if patient_key != current_patient and any(val is not None for val in patient_key):
+                    if current_patient is not None:
+                        cell_values.append("---")  # Separator between patients
+                    
+                    # Add patient information
+                    for field in patient_fields:
+                        if field in record and record[field] is not None:
+                            cell_value = str(record[field]).strip()
+                            if cell_value:
+                                cell_values.append(cell_value)
+                    
+                    if any(val is not None for val in patient_key):
+                        cell_values.append("---")  # Separator after patient info
+                    
+                    current_patient = patient_key
+                
+                # Add non-patient data
+                for key, value in record.items():
+                    if key not in patient_fields and value is not None:
+                        if isinstance(value, (int, float, bool)):
+                            value = str(value)
+                        elif not isinstance(value, str):
+                            continue
+                            
+                        cell_value = str(value).strip()
+                        if cell_value:
+                            cell_values.append(cell_value)
+        else:
+            # Single patient or no patient info - use simple format
+            cell_values = []
+            for record in data:
+                if isinstance(record, dict):
+                    for value in record.values():
+                        if value is not None:
+                            if isinstance(value, (int, float, bool)):
+                                value = str(value)
+                            elif not isinstance(value, str):
+                                continue
+                                
+                            cell_value = str(value).strip()
+                            if cell_value:
+                                cell_values.append(cell_value)
+        
         return '\n'.join(cell_values)
 
     @staticmethod
@@ -179,50 +285,78 @@ class OutputFormatter:
         # Identify diagnosis/varying fields
         varying_fields = ['ICD10', 'Bezeichnung', 'Diagnosis', 'Code', 'Description']
         
-        # Separate patient info and varying info
-        patient_info = {}
-        varying_data = []
-        
-        first_record = data[0]
-        
-        # Extract patient information from first record
-        for field in patient_fields:
-            if field in first_record and first_record[field] is not None:
-                patient_info[field] = first_record[field]
-        
-        # Extract varying information from all records
+        # Check for multiple patients
+        unique_patients = set()
         for record in data:
-            varying_record = {}
-            for key, value in record.items():
-                # Include varying fields or fields not in patient_fields
-                if key in varying_fields or (key not in patient_fields and value is not None):
-                    varying_record[key] = value
-            if varying_record:  # Only add if there's varying data
-                varying_data.append(varying_record)
+            patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+            if any(val is not None for val in patient_key):
+                unique_patients.add(patient_key)
         
-        # Build output
-        cell_values = []
-        
-        # Add patient information first
-        for value in patient_info.values():
-            if value is not None:
-                if isinstance(value, (int, float, bool)):
-                    value = str(value)
-                elif not isinstance(value, str):
-                    continue
+        if len(unique_patients) > 1:
+            # Multiple patients - create grouped structure with separators
+            cell_values = []
+            current_patient_key = None
+            
+            for record in data:
+                patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+                
+                # If patient changed, start new patient group
+                if patient_key != current_patient_key and any(val is not None for val in patient_key):
+                    if current_patient_key is not None:
+                        cell_values.append("===")  # Separator between patients
                     
-                # Add the complete cell value as a single line (strip whitespace)
-                cell_value = str(value).strip()
-                if cell_value:  # Skip empty values
-                    cell_values.append(cell_value)
-        
-        # Add separator if we have both patient info and varying data
-        if patient_info and varying_data:
-            cell_values.append("---")  # Separator between patient info and diagnoses
-        
-        # Add varying information
-        for record in varying_data:
-            for value in record.values():
+                    # Add patient info
+                    for field in patient_fields:
+                        if field in record and record[field] is not None:
+                            value = record[field]
+                            if isinstance(value, (int, float, bool)):
+                                value = str(value)
+                            elif isinstance(value, str):
+                                cell_value = str(value).strip()
+                                if cell_value:
+                                    cell_values.append(cell_value)
+                    
+                    cell_values.append("---")  # Separator between patient info and diagnoses
+                    current_patient_key = patient_key
+                
+                # Add diagnosis data
+                for key, value in record.items():
+                    if key in varying_fields and value is not None:
+                        if isinstance(value, (int, float, bool)):
+                            value = str(value)
+                        elif isinstance(value, str):
+                            cell_value = str(value).strip()
+                            if cell_value:
+                                cell_values.append(cell_value)
+            
+            return '\n'.join(cell_values)
+        else:
+            # Single patient - use original optimized structure
+            patient_info = {}
+            varying_data = []
+            
+            first_record = data[0]
+            
+            # Extract patient information from first record
+            for field in patient_fields:
+                if field in first_record and first_record[field] is not None:
+                    patient_info[field] = first_record[field]
+            
+            # Extract varying information from all records
+            for record in data:
+                varying_record = {}
+                for key, value in record.items():
+                    # Include varying fields or fields not in patient_fields
+                    if key in varying_fields or (key not in patient_fields and value is not None):
+                        varying_record[key] = value
+                if varying_record:  # Only add if there's varying data
+                    varying_data.append(varying_record)
+            
+            # Build output
+            cell_values = []
+            
+            # Add patient information first
+            for value in patient_info.values():
                 if value is not None:
                     if isinstance(value, (int, float, bool)):
                         value = str(value)
@@ -233,6 +367,24 @@ class OutputFormatter:
                     cell_value = str(value).strip()
                     if cell_value:  # Skip empty values
                         cell_values.append(cell_value)
+            
+            # Add separator if we have both patient info and varying data
+            if patient_info and varying_data:
+                cell_values.append("---")  # Separator between patient info and diagnoses
+            
+            # Add varying information
+            for record in varying_data:
+                for value in record.values():
+                    if value is not None:
+                        if isinstance(value, (int, float, bool)):
+                            value = str(value)
+                        elif not isinstance(value, str):
+                            continue
+                            
+                        # Add the complete cell value as a single line (strip whitespace)
+                        cell_value = str(value).strip()
+                        if cell_value:  # Skip empty values
+                            cell_values.append(cell_value)
         
         return '\n'.join(cell_values)
 
@@ -262,32 +414,82 @@ class OutputFormatter:
         # Identify diagnosis/varying fields
         varying_fields = ['ICD10', 'Bezeichnung', 'Diagnosis', 'Code', 'Description']
         
-        # Separate patient info and varying info
-        patient_info = {}
-        varying_data = []
-        
-        first_record = data[0]
-        
-        # Extract patient information from first record
-        for field in patient_fields:
-            if field in first_record and first_record[field] is not None:
-                patient_info[field] = first_record[field]
-        
-        # Extract varying information from all records
+        # Check for multiple patients
+        unique_patients = set()
         for record in data:
-            varying_record = {}
-            for key, value in record.items():
-                # Include varying fields or fields not in patient_fields
-                if key in varying_fields or (key not in patient_fields and value is not None):
-                    varying_record[key] = value
-            if varying_record:  # Only add if there's varying data
-                varying_data.append(varying_record)
+            patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+            if any(val is not None for val in patient_key):
+                unique_patients.add(patient_key)
         
-        # Build optimized output structure
-        optimized_data = {
-            "patient_info": patient_info,
-            "diagnoses": varying_data
-        }
+        if len(unique_patients) > 1:
+            # Multiple patients - create grouped structure
+            patients_data = []
+            current_patient_data = None
+            current_patient_key = None
+            
+            for record in data:
+                patient_key = tuple(record.get(field) for field in ['Name', 'Vorname'] if field in record)
+                
+                # If patient changed, start new patient group
+                if patient_key != current_patient_key and any(val is not None for val in patient_key):
+                    if current_patient_data is not None:
+                        patients_data.append(current_patient_data)
+                    
+                    # Extract patient info
+                    patient_info = {}
+                    for field in patient_fields:
+                        if field in record and record[field] is not None:
+                            patient_info[field] = record[field]
+                    
+                    current_patient_data = {
+                        "patient_info": patient_info,
+                        "diagnoses": []
+                    }
+                    current_patient_key = patient_key
+                
+                # Add diagnosis data to current patient
+                if current_patient_data is None:
+                    current_patient_data = {"diagnoses": []}
+                
+                varying_record = {}
+                for key, value in record.items():
+                    if key in varying_fields or (key not in patient_fields and value is not None):
+                        varying_record[key] = value
+                if varying_record:
+                    current_patient_data["diagnoses"].append(varying_record)
+            
+            # Add the last patient
+            if current_patient_data is not None:
+                patients_data.append(current_patient_data)
+            
+            optimized_data = patients_data
+        else:
+            # Single patient - use original optimized structure
+            patient_info = {}
+            varying_data = []
+            
+            first_record = data[0]
+            
+            # Extract patient information from first record
+            for field in patient_fields:
+                if field in first_record and first_record[field] is not None:
+                    patient_info[field] = first_record[field]
+            
+            # Extract varying information from all records
+            for record in data:
+                varying_record = {}
+                for key, value in record.items():
+                    # Include varying fields or fields not in patient_fields
+                    if key in varying_fields or (key not in patient_fields and value is not None):
+                        varying_record[key] = value
+                if varying_record:  # Only add if there's varying data
+                    varying_data.append(varying_record)
+            
+            # Build optimized output structure
+            optimized_data = {
+                "patient_info": patient_info,
+                "diagnoses": varying_data
+            }
         
         structured_output = {
             "metadata": metadata or {},
