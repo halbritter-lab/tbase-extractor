@@ -103,34 +103,44 @@ class PatientSearchStrategy:
         
         candidate.calculate_overall_score_and_type(
             field_weights=self.config['field_weights'],
-            score_mapping=self.config['score_mapping']
-        )
+            score_mapping=self.config['score_mapping']        )
         return candidate
 
     def search(
         self,
         search_params: Dict[str, Any],  # Expects {'first_name': Optional[str], 'last_name': Optional[str], 'dob': Optional[date]}
-        min_overall_score: float = 0.0
+        min_overall_score: float = 0.0,
+        include_diagnoses: bool = False
     ) -> List[MatchCandidate]:
         candidate_sql: Optional[str] = None
         candidate_params: Tuple[Any, ...] = tuple()  # Ensure it's always a tuple
         
         ln_search = search_params.get("last_name")
-        dob_search = search_params.get("dob")  # Expected to be a date object
-
-        # Determine the SQL query for fetching initial candidates
+        dob_search = search_params.get("dob")  # Expected to be a date object        # Determine the SQL query for fetching initial candidates
         if dob_search and isinstance(dob_search, date):
             start_year = dob_search.year - self.fuzzy_matcher.date_year_tolerance
             end_year = dob_search.year + self.fuzzy_matcher.date_year_tolerance
-            candidate_sql, candidate_params = self.query_manager.get_patients_by_dob_year_range_query(start_year, end_year)
+            # Check if query manager supports include_diagnoses parameter
+            if hasattr(self.query_manager, 'get_patients_by_dob_year_range_query') and 'include_diagnoses' in self.query_manager.get_patients_by_dob_year_range_query.__code__.co_varnames:
+                candidate_sql, candidate_params = self.query_manager.get_patients_by_dob_year_range_query(start_year, end_year, include_diagnoses=include_diagnoses)
+            else:
+                candidate_sql, candidate_params = self.query_manager.get_patients_by_dob_year_range_query(start_year, end_year)
             logger.info(f"Candidate SQL strategy: DOB year range ({start_year}-{end_year}).")
         elif ln_search and isinstance(ln_search, str):
-            candidate_sql, candidate_params = self.query_manager.get_patients_by_lastname_like_query(ln_search)
+            # Check if query manager supports include_diagnoses parameter
+            if hasattr(self.query_manager, 'get_patients_by_lastname_like_query') and 'include_diagnoses' in self.query_manager.get_patients_by_lastname_like_query.__code__.co_varnames:
+                candidate_sql, candidate_params = self.query_manager.get_patients_by_lastname_like_query(ln_search, include_diagnoses=include_diagnoses)
+            else:
+                candidate_sql, candidate_params = self.query_manager.get_patients_by_lastname_like_query(ln_search)
             logger.info(f"Candidate SQL strategy: LastName LIKE '{ln_search}%'.")
         else:
             logger.warning("Neither DOB nor LastName provided for initial SQL filtering. "
                        "Falling back to fetching ALL patients. This can be very slow on large databases.")
-            candidate_sql, candidate_params = self.query_manager.get_all_patients_query()
+            # Check if query manager supports include_diagnoses parameter
+            if hasattr(self.query_manager, 'get_all_patients_query') and 'include_diagnoses' in self.query_manager.get_all_patients_query.__code__.co_varnames:
+                candidate_sql, candidate_params = self.query_manager.get_all_patients_query(include_diagnoses=include_diagnoses)
+            else:
+                candidate_sql, candidate_params = self.query_manager.get_all_patients_query()
 
         if not candidate_sql:  # Should only happen if get_all_patients_query also failed to load
             logger.error("Failed to build candidate SQL query (template not found or other QM error).")

@@ -160,6 +160,81 @@ class OutputFormatter:
         return '\n'.join(words)
 
     @staticmethod
+    def format_as_txt_optimized(data: List[Dict[str, Any]]) -> str:
+        """
+        Formats the data as an optimized text file that groups patient information.
+        Patient data (Name, Vorname, etc.) is shown once, followed by varying data.
+        
+        Args:
+            data (List[Dict[str, Any]]): The data to format
+            
+        Returns:
+            str: Optimized text with patient info shown once, then varying data
+        """
+        if not data:
+            return ""
+        
+        # Identify patient-related fields that typically remain constant
+        patient_fields = ['Name', 'Vorname', 'PatientID', 'FirstName', 'LastName', 'Geburtsdatum', 'DOB']
+        # Identify diagnosis/varying fields
+        varying_fields = ['ICD10', 'Bezeichnung', 'Diagnosis', 'Code', 'Description']
+        
+        # Separate patient info and varying info
+        patient_info = {}
+        varying_data = []
+        
+        first_record = data[0]
+        
+        # Extract patient information from first record
+        for field in patient_fields:
+            if field in first_record and first_record[field] is not None:
+                patient_info[field] = first_record[field]
+        
+        # Extract varying information from all records
+        for record in data:
+            varying_record = {}
+            for key, value in record.items():
+                # Include varying fields or fields not in patient_fields
+                if key in varying_fields or (key not in patient_fields and value is not None):
+                    varying_record[key] = value
+            if varying_record:  # Only add if there's varying data
+                varying_data.append(varying_record)
+        
+        # Build output
+        words = []
+        
+        # Add patient information first
+        for value in patient_info.values():
+            if value is not None:
+                if isinstance(value, (int, float, bool)):
+                    value = str(value)
+                elif not isinstance(value, str):
+                    continue
+                    
+                for word in str(value).split():
+                    if word.strip():
+                        words.append(word.strip())
+        
+        # Add separator if we have both patient info and varying data
+        if patient_info and varying_data:
+            words.append("---")  # Separator between patient info and diagnoses
+        
+        # Add varying information
+        for record in varying_data:
+            for value in record.values():
+                if value is not None:
+                    if isinstance(value, (int, float, bool)):
+                        value = str(value)
+                    elif not isinstance(value, str):
+                        continue
+                        
+                    for word in str(value).split():
+                        if word.strip():
+                            words.append(word.strip())
+        
+        return '\n'.join(words)
+
+    @staticmethod
     def format_as_console_table(data: List[Any], stream=sys.stdout) -> None:
         """Formats data as a console table and writes to the given stream."""
         if not data:

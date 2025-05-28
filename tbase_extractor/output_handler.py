@@ -80,7 +80,8 @@ def write_output_to_file(
     processed_results: List[Dict[str, Any]],
     effective_format: str,
     metadata_dict: Optional[Dict[str, Any]],
-    output_formatter: OutputFormatter
+    output_formatter: OutputFormatter,
+    optimize_txt: bool = False
 ) -> None:
     """Write formatted results to a file."""
     metadata_summary = format_metadata_summary(metadata_dict)
@@ -97,8 +98,11 @@ def write_output_to_file(
                 f.write(metadata_summary + '\n')
             f.write(output_formatter.format_as_tsv(processed_results))
         elif effective_format == 'txt':
-            # For txt format, no metadata or headers - just one word per line
-            f.write(output_formatter.format_as_txt(processed_results))
+            # For txt format, no metadata or headers - use optimized format if requested
+            if optimize_txt:
+                f.write(output_formatter.format_as_txt_optimized(processed_results))
+            else:
+                f.write(output_formatter.format_as_txt(processed_results))
         elif effective_format == 'stdout':
             if metadata_summary:
                 f.write(metadata_summary + '\n')
@@ -115,7 +119,8 @@ def write_output_to_stdout(
     processed_results: List[Dict[str, Any]],
     effective_format: str,
     metadata_dict: Optional[Dict[str, Any]],
-    output_formatter: OutputFormatter
+    output_formatter: OutputFormatter,
+    optimize_txt: bool = False
 ) -> None:
     """Write formatted results to stdout."""
     metadata_summary = format_metadata_summary(metadata_dict)
@@ -131,8 +136,11 @@ def write_output_to_stdout(
             print(metadata_summary)
         print(output_formatter.format_as_tsv(processed_results))
     elif effective_format == 'txt':
-        # For txt format, no metadata or headers - just one word per line
-        print(output_formatter.format_as_txt(processed_results))
+        # For txt format, no metadata or headers - use optimized format if requested
+        if optimize_txt:
+            print(output_formatter.format_as_txt_optimized(processed_results))
+        else:
+            print(output_formatter.format_as_txt(processed_results))
     elif effective_format == 'stdout':
         if metadata_summary:
             print(metadata_summary)
@@ -167,7 +175,8 @@ def handle_split_output(
     effective_format: str,
     metadata_dict: Optional[Dict[str, Any]],
     filename_template: str,
-    output_formatter: OutputFormatter
+    output_formatter: OutputFormatter,
+    optimize_txt: bool = False
 ) -> int:
     """Handle split output - save each row as a separate file."""
     if not processed_results:
@@ -190,7 +199,7 @@ def handle_split_output(
             
             write_output_to_file(
                 row_file_path, [row_data], [row_data], 
-                effective_format, row_metadata, output_formatter
+                effective_format, row_metadata, output_formatter, optimize_txt
             )
             
             files_saved += 1
@@ -209,7 +218,8 @@ def handle_output(
     effective_format: str,
     metadata_dict: Optional[Dict[str, Any]] = None,
     split_output: bool = False,
-    filename_template: str = "{PatientID}"
+    filename_template: str = "{PatientID}",
+    optimize_txt: bool = False
 ) -> None:
     """
     Format and output query results based on the specified format and destination.
@@ -222,6 +232,7 @@ def handle_output(
         metadata_dict: Optional metadata dictionary to include
         split_output: Whether to save each row as a separate file
         filename_template: Template for naming individual output files when split_output is True
+        optimize_txt: Whether to use optimized TXT format that groups patient data
     """
     output_formatter = OutputFormatter()
     processed_results = process_match_candidates_for_tabular(results_envelope)
@@ -231,20 +242,20 @@ def handle_output(
             if split_output and processed_results:
                 files_saved = handle_split_output(
                     output_file_path, processed_results, effective_format,
-                    metadata_dict, filename_template, output_formatter
+                    metadata_dict, filename_template, output_formatter, optimize_txt
                 )
                 output_dir = os.path.dirname(output_file_path) or os.getcwd()
                 logger.info(f"Saved {files_saved} individual files for '{query_display_name}' in {output_dir}")
             else:
                 write_output_to_file(
                     output_file_path, results_envelope, processed_results,
-                    effective_format, metadata_dict, output_formatter
+                    effective_format, metadata_dict, output_formatter, optimize_txt
                 )
                 logger.info(f"Saved results for '{query_display_name}' to {output_file_path}")
         else:
             write_output_to_stdout(
                 results_envelope, processed_results, effective_format,
-                metadata_dict, output_formatter
+                metadata_dict, output_formatter, optimize_txt
             )
     
     except ValueError as e:
