@@ -8,6 +8,10 @@ from .config import VALID_OUTPUT_FORMATS, FILE_EXTENSION_MAP, DEFAULT_FILE_ENCOD
 
 logger = logging.getLogger(__name__)
 
+# Define constants for field types
+PATIENT_FIELDS = ['Name', 'Vorname', 'PatientID', 'FirstName', 'LastName', 'Geburtsdatum', 'DOB']
+VARYING_FIELDS = ['ICD10', 'Bezeichnung', 'Diagnosis', 'Code', 'Description']
+
 
 def determine_output_format(user_format: Optional[str], output_file_path: Optional[str]) -> str:
     """Determines the effective output format based on user input and file extension."""
