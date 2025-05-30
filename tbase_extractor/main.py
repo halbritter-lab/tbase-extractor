@@ -173,8 +173,7 @@ def setup_arg_parser():
     parser_query.add_argument('--table-schema', '-ts',
         required=False,
         help="The schema of the table to query (e.g., 'dbo').")
-    
-    # Dynamic query builder arguments
+      # Dynamic query builder arguments
     parser_query.add_argument('--patient-table', type=str, default='Patient',
         help="Name of the patient table (default: Patient).")
     
@@ -189,6 +188,16 @@ def setup_arg_parser():
     
     parser_query.add_argument('--use-dynamic-builder', action='store_true',
         help="Use dynamic query builder instead of static templates.")
+    
+    # Split output arguments for query command
+    parser_query.add_argument(
+        '--split-output', action='store_true',
+        help='Create separate output files for each patient when processing multiple patients.'
+    )
+    parser_query.add_argument(
+        '--filename-template', type=str, default="{PatientID}",
+        help='Template for output filenames when using --split-output (default: "{PatientID}").'
+    )
     
     # --- Sub-command: discover-patient-tables ---
     parser_discover = subparsers.add_parser('discover-patient-tables', 
