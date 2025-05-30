@@ -279,9 +279,9 @@ def should_use_optimized_format(processed_results: List[Dict[str, Any]]) -> bool
     first_record = processed_results[0]
     
     # Patient-related fields that typically remain constant
-    patient_fields = ['Name', 'Vorname', 'PatientID', 'FirstName', 'LastName', 'Geburtsdatum', 'DOB']
+    patient_fields = PATIENT_FIELDS
     # Diagnosis/varying fields
-    varying_fields = ['ICD10', 'Bezeichnung', 'Diagnosis', 'Code', 'Description']
+    varying_fields = VARYING_FIELDS
     
     # Check if we have both types of fields
     has_patient_fields = any(field in first_record for field in patient_fields)
