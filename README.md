@@ -1,207 +1,259 @@
-# SQL Database Query Script (Refactored)
+# TBase Extractor
 
-This Python script provides a command-line interface to connect to a Microsoft SQL Server database, execute predefined queries (like retrieving patient information or listing tables), and output results to the console or a JSON file. It uses environment variables for secure database credentials and SQL templates for maintainable queries.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-## Project Idea
+A powerful Python CLI tool for extracting patient data from SQL Server databases with configurable SQL templates, fuzzy matching capabilities, and flexible output formats.
 
-The goal of this project is to create a simple, reusable, and maintainable Python tool for interacting with a SQL Server database. It demonstrates secure credential management, modular code structure, the use of SQL templates, and a flexible command-line interface.
+## 🚀 Features
 
-## Implementation Details
+- **🔒 Secure Configuration**: Environment-based credential management
+- **📊 Multiple Output Formats**: JSON, CSV, TSV, TXT, and formatted console output
+- **🔍 Fuzzy Matching**: Advanced patient search with configurable similarity thresholds
+- **⚡ Batch Processing**: Process multiple patients from CSV input files
+- **🎯 Dynamic Queries**: Runtime SQL generation with flexible table joins
+- **🧹 Data Cleaning**: Automatic HTML tag removal and field normalization
+- **📁 Split Output**: Individual files per patient for batch operations
+- **🔧 Modular Architecture**: Clean separation of concerns for maintainability
 
-The application follows a modular structure:
+## 📋 Table of Contents
 
-*   **`main.py`**: The main entry point, handling argument parsing and orchestrating the workflow.
-*   **`sql_interface/`**: A Python package containing the core logic:
-    *   `db_interface.py`: Manages the database connection (`SQLInterface` class) using `pyodbc`.
-    *   `query_manager.py`: Loads SQL queries from template files located in the `sql_templates/` directory.
-    *   `output_formatter.py`: Formats query results for console (using `tabulate` if available) or JSON output.
-    *   `exceptions.py`: Defines custom exception classes for specific errors.
-*   **`sql_templates/`**: Directory holding `.sql` files containing the parameterized query text.
-
-Key Libraries Used:
-
-*   `pyodbc`: For connecting to and interacting with the SQL Server database.
-*   `python-dotenv`: For loading database credentials from a `.env` file.
-*   `argparse`: For handling command-line arguments via subparsers for different actions.
-*   `tabulate`: (Optional but recommended) For well-formatted console table output.
-*   `json`: For serializing query results into JSON format.
-*   `os`, `sys`, `datetime`: Standard libraries for path manipulation, system interaction, and date handling.
-
-## Features
-
-*   **Secure Configuration:** Uses a `.env` file for database credentials and driver information.
-*   **Modular Design:** Code is separated into logical modules for better readability, maintainability, and testability.
-*   **SQL Templates:** SQL queries are stored in `.sql` files, keeping complex SQL separate from Python code. Parameterized queries (`?`) are used to prevent SQL injection.
-*   **Multiple Query Types:**
-    *   List available database tables.
-    *   Query patient data by `PatientID`.
-    *   Query patient data by `FirstName`, `LastName`, and `DateOfBirth`. (Easily extensible with more templates).
-*   **Flexible Output:**
-    *   Prints results to the console in a formatted table (`tabulate` preferred).    *   Saves results to a specified file in **JSON**, **CSV**, **TSV**, or **TXT** format (see `--format`).
-    *   Use `--format` to select output type: `json`, `csv`, `tsv`, `txt`, or `stdout` (pretty table to console).
-    *   The `txt` format outputs one cell value per line without metadata or headers.
-    *   If `--output` is not given, formatted output is printed to the console.
-*   **Batch Processing:**
-    *   Process multiple Patient IDs in a single query using a CSV input file.
-    *   Specify a custom ID column name with `--id-column`.
-    *   Detailed metadata about batch processing success/failure rates.
-*   **User-Friendly CLI:** Uses `argparse` with subparsers (`list-tables`, `query`) for clear command structure. Now supports `--format` for output type selection.
-*   **Date Handling:** Validates date input format and correctly serializes date/datetime objects for JSON output.
-*   **Error Handling:** Includes basic error handling for connection issues, query execution, template loading, and file I/O.
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Prerequisites
 
-*   Python 3.7 or higher (due to type hinting usage, though might work on 3.6)
-*   Access to a Microsoft SQL Server database.
-*   An **ODBC Driver for SQL Server** installed on your system (e.g., "ODBC Driver 17 for SQL Server", "SQL Server Native Client 11.0"). The exact name needs to match the `SQL_DRIVER` setting in your `.env` file.
+- **Python 3.8+**
+- **Microsoft SQL Server database access**
+- **ODBC Driver for SQL Server** (e.g., "ODBC Driver 17 for SQL Server")
 
-## Installation
+## 🛠️ Installation
 
-1.  Clone or download the project files.
-2.  **(Recommended)** Create and activate a Python virtual environment:
-    ```bash
-    python -m venv venv
-    # Windows: .\venv\Scripts\activate
-    # macOS/Linux: source venv/bin/activate
-    ```
-3.  Install the package and its dependencies:
-    ```bash
-    pip install .
-    ```
-    For a development/editable install:
-    ```bash
-    pip install -e .
-    ```
-    This will install `tbase-extractor` and all libraries listed in `pyproject.toml` (like `pyodbc`, `python-dotenv`, `tabulate`, `rapidfuzz`, `beautifulsoup4`).
-    Or for a development/editable install:
-    ```bash
-    pip install -e .
-    ```
+### Standard Installation
 
-This will install the `tbase-extractor` command and all dependencies.
+```bash
+# Clone the repository
+git clone https://github.com/halbritter-lab/tbase-extractor.git
+cd tbase-extractor
 
-## Setup
+# Create and activate virtual environment
+python -m venv venv
+# Windows:
+.\venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
 
-1.  Create a file named `.env` in the project's root directory (alongside `main.py`).
-2.  Add your database connection details to the `.env` file. **Crucially, ensure the `SQL_DRIVER` value exactly matches the name of the ODBC driver installed on your system.**
-    ```dotenv
-    # .env
-    SQL_SERVER=<your_sql_server_name_or_ip>
-    DATABASE=<your_database_name>
-    USERNAME_SQL=<your_sql_username>
-    PASSWORD=<your_sql_password>
-    SQL_DRIVER="{ODBC Driver 17 for SQL Server}" # <-- Example: Replace with your actual driver name
-    ```
-3.  Verify that the table and column names used in the `.sql` files within the `sql_templates/` directory (`dbo.Patient`, `PatientID`, `Vorname`, `Name`, `Geburtsdatum`) match your actual database schema. Adjust the templates if necessary.
+# Install the package
+pip install .
+```
 
-## Usage
+### Development Installation
 
-You can now run the tool from any directory:
+```bash
+# Install with development dependencies
+pip install -e ".[dev]"
 
-*   **Get Help:**
-    ```bash
-    tbase-extractor --help
-    tbase-extractor list-tables --help
-    tbase-extractor query --help
-    ```
+# Set up pre-commit hooks
+make pre-commit
+```
 
-*   **List Available Tables:**
-    ```bash
-    tbase-extractor list-tables
-    ```
+## ⚙️ Configuration
 
-*   **Query Patient by ID (Console Output):**
-    ```bash
-    tbase-extractor query --query-name patient-details --patient-id 12345
-    ```
-    *(Alias: `tbase-extractor query -q patient-details -i 12345`)*
+1. Create a `.env` file in the project root:
 
-*   **Query Patient by ID (JSON Output):**
-    ```bash
-    tbase-extractor query -q patient-details -i 12345 -o output/patient_12345.json
-    ```
+```env
+SQL_SERVER=<your_sql_server_name_or_ip>
+DATABASE=<your_database_name>
+USERNAME_SQL=<your_sql_username>
+PASSWORD=<your_sql_password>
+SQL_DRIVER="{ODBC Driver 17 for SQL Server}"
+```
 
-*   **Query Patient by ID (CSV Output):**
-    ```bash
-    tbase-extractor query -q patient-details -i 12345 -f csv -o output/patient_12345.csv
-    ```
+2. Verify database schema compatibility:
+   - Primary patient table: `dbo.Patient`
+   - Required columns: `PatientID`, `Vorname` (first name), `Name` (last name), `Geburtsdatum` (DOB)
+   - Diagnosis table: `dbo.Diagnose` with `ICD10`, `Bezeichnung` columns
 
-*   **Batch Query Multiple Patients by ID from CSV File:**
-    ```bash
-    tbase-extractor query -q get_patient_by_id --input-csv patients.csv --output batch_results.json
-    ```
-    *(Aliases: `tbase-extractor query -q get_patient_by_id -ic patients.csv -o batch_results.json`)*
-    *(Note: CSV file must have a header row with a column named "PatientID" by default)*
+## 🎯 Usage
 
-*   **Batch Query with Custom ID Column Name:**
-    ```bash
-    tbase-extractor query -q get_patient_by_id -ic patients.csv --id-column ID -o batch_results.json
-    ```
-    *(Alias: `tbase-extractor query -q get_patient_by_id -ic patients.csv -idc ID -o batch_results.json`)*
+### Basic Commands
 
-*   **Batch Query with Split Output (One file per row):**
-    ```bash
-    tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/patient_files.json --split-output
-    ```
-    *(This will create individual JSON files in the 'output' directory, one per patient, named by PatientID)*
+```bash
+# Get help
+tbase-extractor --help
 
-*   **Batch Query with Split Output and Custom Filename Template:**
-    ```bash
-    tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/patient_files.json --split-output --filename-template "{Vorname}_{Name}"
-    ```
-    *(This will create files named after the patient's first and last names, e.g., 'John_Smith.json')*
-    *(Aliases: `tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/patient_files.json -so -ft "{Vorname}_{Name}"`)*
+# List available tables
+tbase-extractor list-tables
 
-*   **Query Patient by Name and DOB (Console Output):**
-    ```bash
-    tbase-extractor query --query-name patient-by-name-dob --first-name John --last-name Doe --dob 1990-05-20
-    ```
-    *(Aliases: `tbase-extractor query -q patient-by-name-dob -fn John -ln Doe -d 1990-05-20`)*
-    *(Note: Date format must be YYYY-MM-DD)*
+# Discover patient tables
+tbase-extractor discover-patient-tables
+```
 
-*   **Query Patient by Name and DOB (JSON Output):**
-    ```bash
-    tbase-extractor query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -o output/jane_smith_data.json
-    ```
+### Query Examples
 
-*   **Query Patient by Name and DOB (TSV Output):**
-    ```bash
-    tbase-extractor query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -f tsv -o output/jane_smith_data.tsv
-    ```
+#### Single Patient Query
 
-*   **Get Column Details for a Specific Table (Console Output):**
-    ```bash
-    tbase-extractor query --query-name get-table-columns --table-name Patient --table-schema dbo
-    ```
-    *(Aliases: `tbase-extractor query -q get-table-columns -tn Patient -ts dbo`)*
-    This will output a summary for the 'Patient' table in the 'dbo' schema, including the table name, schema, column count, and a list of column names with their data types.
+```bash
+# Query by Patient ID (console output)
+tbase-extractor query --query-name patient-details --patient-id 12345
 
-*   **Get Column Details for a Specific Table (JSON Output):**
-    ```bash
-    tbase-extractor query -q get-table-columns -tn MyTable -ts other_schema -o output/mytable_columns.json
-    ```
+# Query by Patient ID (JSON output)
+tbase-extractor query -q patient-details -i 12345 -o output/patient_12345.json
 
-## Adding New Queries
+# Query by Patient ID (CSV output)
+tbase-extractor query -q patient-details -i 12345 -f csv -o output/patient_12345.csv
+```
 
-1.  Create a new `.sql` file in the `sql_templates/` directory (e.g., `get_orders_by_customer.sql`). Use `?` for parameters.
-2.  Add a corresponding convenience method in `sql_interface/query_manager.py` (e.g., `get_orders_by_customer_query(self, customer_id)`).
-3.  Update the `choices` for `--query-name` in `main.py`'s `setup_arg_parser` function.
-4.  Add necessary command-line arguments (e.g., `--customer-id`) to the `query` subparser in `main.py`.
-5.  Add an `elif` block in `main.py` to handle the new `--query-name`, validate its arguments, and call the appropriate `query_manager` method.
+#### Patient Search by Demographics
 
-## Error Handling
+```bash
+# Query by name and date of birth
+tbase-extractor query -q patient-by-name-dob -fn John -ln Doe -d 1990-05-20
 
-The script includes handling for:
+# With JSON output
+tbase-extractor query -q patient-by-name-dob -fn Jane -ln Smith -d 1988-11-01 -o output/jane_smith.json
+```
 
-*   Missing or incomplete `.env` configuration.
-*   Database connection errors (reporting SQLSTATE).
-*   Query execution errors (reporting SQLSTATE).
-*   Failure to fetch results.
-*   SQL template file not found (`QueryTemplateNotFoundError`).
-*   Missing required command-line arguments for specific queries.
-*   Incorrect date format for the `--dob` argument.
-*   Errors during JSON serialization or file output.
+#### Batch Processing
 
-## License
+```bash
+# Batch query from CSV file
+tbase-extractor query -q get_patient_by_id --input-csv patients.csv -o batch_results.json
 
-MIT
+# Batch with custom ID column
+tbase-extractor query -q get_patient_by_id -ic patients.csv --id-column ID -o results.json
+
+# Split output (one file per patient)
+tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/ --split-output
+
+# Custom filename template
+tbase-extractor query -q get_patient_by_id -ic patients.csv -o output/ --split-output --filename-template "{Vorname}_{Name}"
+```
+
+#### Custom Table Queries
+
+```bash
+# Query custom tables with flexible specifications
+tbase-extractor query-custom-tables --table-specs "TableName:Schema:JoinColumn" -i 12345
+```
+
+### Output Formats
+
+| Format | Description | Usage |
+|--------|-------------|-------|
+| `json` | JSON format with metadata | `-f json` |
+| `csv` | Comma-separated values | `-f csv` |
+| `tsv` | Tab-separated values | `-f tsv` |
+| `txt` | Plain text (one value per line) | `-f txt` |
+| `stdout` | Formatted console table (default) | `-f stdout` |
+
+## 🏗️ Architecture
+
+### Core Components
+
+```
+tbase_extractor/
+├── main.py                    # CLI entry point and argument parsing
+├── config.py                  # Configuration management
+├── metadata.py                # Query metadata handling
+├── output_handler.py          # Multi-format output processing
+├── utils.py                   # Utility functions
+├── sql_interface/             # Database interaction layer
+│   ├── db_interface.py        # Core database connection (pyodbc)
+│   ├── query_manager.py       # SQL template management
+│   ├── dynamic_query_manager.py # Runtime query generation
+│   ├── flexible_query_builder.py # Custom table query construction
+│   └── output_formatter.py   # Result formatting
+├── matching/                  # Fuzzy matching system
+│   ├── fuzzy_matchers.py     # String similarity matching (rapidfuzz)
+│   ├── search_strategy.py    # Patient search logic
+│   └── models.py             # Data models
+└── sql_templates/            # Parameterized SQL queries
+    └── *.sql                 # Query templates
+```
+
+### Key Technologies
+
+- **Database**: `pyodbc` for SQL Server connectivity
+- **CLI**: `argparse` with subcommands
+- **Fuzzy Matching**: `rapidfuzz` for similarity scoring
+- **Output**: `tabulate` for console formatting
+- **Configuration**: `python-dotenv` for environment management
+- **Data Cleaning**: `beautifulsoup4` for HTML tag removal
+
+## 🧪 Development
+
+### Available Make Commands
+
+```bash
+make help          # Show all available commands
+make install-dev   # Install with development dependencies
+make format        # Format code with black and ruff
+make lint          # Run all linting tools (ruff, black, mypy)
+make type-check    # Run mypy type checking
+make test          # Run tests with pytest
+make test-cov      # Run tests with coverage
+make pre-commit    # Install and run pre-commit hooks
+make clean         # Clean up build artifacts
+```
+
+### Manual Development Commands
+
+```bash
+# Format code
+black .
+ruff --fix .
+
+# Check code quality
+ruff check .
+black --check .
+mypy .
+
+# Run tests
+pytest
+pytest --cov=tbase_extractor
+```
+
+### Adding New Queries
+
+1. Create a `.sql` file in `sql_templates/` with parameterized queries (`?` placeholders)
+2. Add a method in `sql_interface/query_manager.py`
+3. Update command-line arguments in `main.py`
+4. Add handling logic for the new query type
+
+## 🔐 Security Features
+
+- **Parameterized Queries**: All SQL uses `?` placeholders to prevent injection
+- **Environment Variables**: Sensitive credentials stored in `.env` files
+- **Input Validation**: Date format validation and parameter checking
+- **Error Handling**: Comprehensive SQLSTATE error reporting
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes following the code style guidelines
+4. Run tests and linting (`make lint test`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Developed by the Halbritter Lab team
+- Built with modern Python best practices
+- Designed for clinical research data extraction workflows
+
+---
+
+For questions, issues, or contributions, please visit our [GitHub repository](https://github.com/halbritter-lab/tbase-extractor).
