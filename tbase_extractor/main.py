@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Tuple
 
 try:
     import pyodbc
@@ -431,13 +431,25 @@ def setup_arg_parser():
     return parser
 
 
-def setup_logging(debug: bool = False, log_file: str = None):
+def setup_logging(debug: bool = False, log_file: Optional[str] = None) -> None:
+    """
+    Configure secure logging for the application.
+    
+    Args:
+        debug: Enable debug level logging
+        log_file: Optional log file path
+    """
+    from .secure_logging import configure_secure_logging
+    
+    # Determine if we're in production mode (opposite of debug)
+    production_mode = not debug
     log_level = logging.DEBUG if debug else logging.INFO
-    log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    handlers = [logging.StreamHandler(sys.stdout)]
-    if log_file:
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
-    logging.basicConfig(level=log_level, format=log_format, handlers=handlers, force=True)
+    
+    configure_secure_logging(
+        level=log_level,
+        log_file=log_file,
+        production_mode=production_mode
+    )
 
 
 def main():
@@ -454,8 +466,15 @@ def main():
     debug = getattr(args, "debug", False)
     log_file = os.getenv("SQL_APP_LOGFILE", None)
     setup_logging(debug, log_file)  # Ensure logger is configured
-    logger = logging.getLogger("tbase_extractor.main")  # Use a specific logger name
-    logger.debug(f"Parsed arguments: {args}")
+    
+    # Use secure logger for main application
+    from .secure_logging import get_secure_logger
+    logger = get_secure_logger("tbase_extractor.main", production_mode=not debug)
+    
+    # Log application startup (without sensitive argument details)
+    logger.info("Application started")
+    if debug:
+        logger.debug("Debug mode enabled - additional logging active")
 
     # Determine query manager based on use_dynamic_builder flag
     use_dynamic = getattr(args, "use_dynamic_builder", False)
@@ -626,7 +645,7 @@ def handle_list_tables(
     query_manager,
     db: SQLInterface,
     logger: logging.Logger,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """Handle the list-tables action."""
     query_display_name = "List Tables"
     logger.info(f"Attempting to execute: {query_display_name}")
@@ -663,7 +682,7 @@ def handle_get_patient_by_id(
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """
     Handle the get_patient_by_id query for single ID or batch CSV input.
 
@@ -816,7 +835,7 @@ def handle_patient_by_name_dob(
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """Handle the patient-by-name-dob query."""
     query_display_name = "Query 'patient-by-name-dob'"
     if not all([args.first_name, args.last_name, args.dob]):
@@ -880,7 +899,7 @@ def handle_patient_fuzzy_search(
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """Handle the patient-fuzzy-search query."""
     query_display_name = "Fuzzy Patient Search"
     if not any([args.first_name, args.last_name, args.dob]):
@@ -929,7 +948,7 @@ def handle_get_table_columns(
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """
     Handle the get-table-columns query.
 
@@ -1002,7 +1021,7 @@ def handle_discover_patient_tables(
     _query_manager,
     db: SQLInterface,
     logger: logging.Logger,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """Handle the discover-patient-tables action."""
     query_display_name = "Discover Patient Tables"
     logger.info(f"Attempting to execute: {query_display_name}")
@@ -1041,7 +1060,7 @@ def handle_query_custom_tables(
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """Handle the query-custom-tables action."""
     original_query_display_name = "Query Custom Tables"
 
@@ -1185,7 +1204,7 @@ def handle_batch_search_demographics(
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,
-) -> tuple[Optional[list], str]:
+) -> Tuple[Optional[list], str]:
     """
     Handle the batch-search-demographics query.
 

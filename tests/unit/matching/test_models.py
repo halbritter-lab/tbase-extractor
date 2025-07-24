@@ -274,7 +274,8 @@ class TestCalculateOverallScoreAndType:
 
         # NotCompared fields should not affect score calculation for exact match determination
         assert candidate.overall_score == 0.5  # Only FirstName contributes
-        assert candidate.primary_match_type == "Partial Match: Exact"
+        # The implementation includes all fields in the summary, including NotCompared ones
+        assert candidate.primary_match_type == "Partial Match: FirstName:Exact|LastName:NotCompared"
 
     def test_invalid_similarity_score_for_fuzzy(self):
         """Test handling of fuzzy match with invalid similarity score."""

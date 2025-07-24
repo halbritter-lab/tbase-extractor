@@ -4,6 +4,7 @@ import html
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
@@ -18,8 +19,10 @@ except ImportError:
     # Fallback for environments without BeautifulSoup
     BeautifulSoup = None
 
-# Initialize logger
-logger = logging.getLogger(__name__)
+from ..secure_logging import get_secure_logger
+
+# Initialize secure logger
+logger = get_secure_logger(__name__)
 
 
 class SQLInterface:
@@ -106,6 +109,7 @@ class SQLInterface:
             )
             return False
 
+        start_time = time.time()
         try:
             connection_string = (
                 f"DRIVER={self.driver};"
@@ -114,27 +118,40 @@ class SQLInterface:
                 f"UID={self.username_sql};"
                 f"PWD={self.password};"
             )
-            if self.debug:
-                masked_pwd = "***" if self.password else None
-                logger.debug(
-                    f"Connection string: DRIVER={self.driver};SERVER={self.server};"
-                    f"DATABASE={self.database};UID={self.username_sql};PWD={masked_pwd}",
-                )
-                logger.debug("Connecting to database...")
+            
+            # Secure logging: Never log actual connection string or credentials
+            logger.debug(f"Attempting database connection to server: {self.server or 'Unknown'}")
+            logger.debug(f"Target database: {self.database or 'Unknown'}")
+            
             self.connection = pyodbc.connect(connection_string, autocommit=False)
             self.cursor = self.connection.cursor()
-            if self.debug:
-                logger.debug("Database connection established.")
-            logger.info("Successfully connected to the database.")
+            
+            duration_ms = (time.time() - start_time) * 1000
+            logger.log_authentication_event("DB_CONNECT", self.username_sql, success=True)
+            logger.log_database_operation("CONNECT", success=True, duration_ms=duration_ms)
+            logger.info("Database connection established successfully")
             return True
         except Exception as ex:  # Catch all exceptions since pyodbc might not be available
+            duration_ms = (time.time() - start_time) * 1000
+            
+            # Secure error logging - don't expose sensitive connection details
             if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
-                # This is a pyodbc.Error
+                # This is a pyodbc.Error - log SQLSTATE but sanitize details
                 sqlstate = ex.args[0]
-                logger.error(f"Error connecting to the database: SQLSTATE {sqlstate}")
-                logger.error(f"Error details: {ex.args[1]}")
+                logger.log_authentication_event("DB_CONNECT", self.username_sql, success=False, 
+                                               details=f"SQLSTATE {sqlstate}")
+                logger.error(f"Database connection failed: SQLSTATE {sqlstate}")
+                # Don't log detailed error message as it might contain sensitive info
+                logger.debug("Connection error details available in debug mode (sanitized)")
             else:
-                logger.error(f"Error connecting to the database: {ex}")
+                # Generic exception - sanitize the error message
+                error_type = type(ex).__name__
+                logger.log_authentication_event("DB_CONNECT", self.username_sql, success=False, 
+                                               details=f"Exception: {error_type}")
+                logger.error(f"Database connection failed: {error_type}")
+                logger.debug(f"Connection error details: {str(ex)[:100]}...")  # Truncate for safety
+            
+            logger.log_database_operation("CONNECT", success=False, duration_ms=duration_ms)
             self.connection = None  # Ensure state reflects failure
             self.cursor = None
             return False
@@ -156,22 +173,28 @@ class SQLInterface:
         if not self.connection or not self.cursor:
             logger.error("Not connected to the database. Cannot execute query.")
             return False
-        if self.debug:
-            logger.debug(f"Executing query: {query}")
-            logger.debug(f"With parameters: {params}")
+        
+        start_time = time.time()
         try:
             self.cursor.execute(query, params)
-            if self.debug:
-                logger.debug("Query executed successfully.")
+            duration_ms = (time.time() - start_time) * 1000
+            logger.log_sql_execution(query, params, success=True, duration_ms=duration_ms)
             return True
         except Exception as ex:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.log_sql_execution(query, params, success=False, duration_ms=duration_ms)
+            
+            # Secure error logging - don't expose query details in error messages
             if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
                 # This is a pyodbc.Error
                 sqlstate = ex.args[0]
-                error_message = ex.args[1]
-                logger.error(f"Error executing query: SQLSTATE {sqlstate} - {error_message}")
+                logger.error(f"SQL execution failed: SQLSTATE {sqlstate}")
+                logger.debug("Query execution error details available in debug mode")
             else:
-                logger.error(f"Error executing query: {ex}")
+                error_type = type(ex).__name__
+                logger.error(f"SQL execution failed: {error_type}")
+                logger.debug(f"Query execution error: {str(ex)[:100]}...")
+            
             self._rollback()  # Attempt to rollback on execution error
             return False
 
@@ -202,9 +225,12 @@ class SQLInterface:
 
             columns = [column[0] for column in self.cursor.description]
             # Fetch all rows from the cursor
+            start_time = time.time()
             rows = self.cursor.fetchall()
-            if self.debug:
-                logger.debug(f"Rows fetched: {len(rows)}")
+            duration_ms = (time.time() - start_time) * 1000
+            
+            row_count = len(rows)
+            logger.log_database_operation("FETCH", success=True, duration_ms=duration_ms, row_count=row_count)
 
             # Convert rows to list of dictionaries, cleaning any string values
             cleaned_results = []
