@@ -115,3 +115,7 @@ dmypy.json
 
 #csv input files
 /input_csv
+
+# claude files
+CLAUDE.md
+.claude
