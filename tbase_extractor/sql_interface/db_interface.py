@@ -1,13 +1,17 @@
+"""Database interface module for SQL Server connections."""
+
 import html
-import re
-from bs4 import BeautifulSoup
-import pyodbc
-import os
 import logging
-from typing import Optional, List, Dict, Any, Tuple
+import os
+import re
+from typing import Any, Dict, List, Optional, Tuple
+
+import pyodbc
+from bs4 import BeautifulSoup
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
 
 class SQLInterface:
     """Handles database connection, query execution, and result fetching."""
@@ -30,13 +34,13 @@ class SQLInterface:
         text = html.unescape(value)
 
         # Replace <br> tags with newlines
-        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
 
         # Remove all other HTML tags using BeautifulSoup
-        text = BeautifulSoup(text, "html.parser").get_text(separator='\n')
+        text = BeautifulSoup(text, "html.parser").get_text(separator="\n")
 
         # Normalize multiple consecutive newlines to a single newline
-        text = re.sub(r'\n\s*\n+', '\n', text)
+        text = re.sub(r"\n\s*\n+", "\n", text)
 
         # Remove leading and trailing whitespace
         return text.strip()
@@ -56,7 +60,7 @@ class SQLInterface:
     def __enter__(self):
         """Context manager entry point: establishes connection."""
         self.connect()
-        return self # Return the instance for use within the 'with' block
+        return self  # Return the instance for use within the 'with' block
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit point: closes connection."""
@@ -78,8 +82,10 @@ class SQLInterface:
 
         # Check for required connection details
         if not all([self.server, self.database, self.username_sql, self.password, self.driver]):
-            logger.error("Database connection details incomplete. Check your .env file "
-                      "(SQL_SERVER, DATABASE, USERNAME_SQL, PASSWORD, SQL_DRIVER).")
+            logger.error(
+                "Database connection details incomplete. Check your .env file "
+                "(SQL_SERVER, DATABASE, USERNAME_SQL, PASSWORD, SQL_DRIVER).",
+            )
             return False
 
         try:
@@ -91,9 +97,11 @@ class SQLInterface:
                 f"PWD={self.password};"
             )
             if self.debug:
-                masked_pwd = '***' if self.password else None
-                logger.debug(f"Connection string: DRIVER={self.driver};SERVER={self.server};"
-                          f"DATABASE={self.database};UID={self.username_sql};PWD={masked_pwd}")
+                masked_pwd = "***" if self.password else None
+                logger.debug(
+                    f"Connection string: DRIVER={self.driver};SERVER={self.server};"
+                    f"DATABASE={self.database};UID={self.username_sql};PWD={masked_pwd}",
+                )
                 logger.debug("Connecting to database...")
             self.connection = pyodbc.connect(connection_string, autocommit=False)
             self.cursor = self.connection.cursor()
@@ -105,7 +113,7 @@ class SQLInterface:
             sqlstate = ex.args[0]
             logger.error(f"Error connecting to the database: SQLSTATE {sqlstate}")
             logger.error(f"Error details: {ex.args[1]}")
-            self.connection = None # Ensure state reflects failure
+            self.connection = None  # Ensure state reflects failure
             self.cursor = None
             return False
 
@@ -138,7 +146,7 @@ class SQLInterface:
             sqlstate = ex.args[0]
             error_message = ex.args[1]
             logger.error(f"Error executing query: SQLSTATE {sqlstate} - {error_message}")
-            self._rollback() # Attempt to rollback on execution error
+            self._rollback()  # Attempt to rollback on execution error
             return False
 
     def fetch_results(self) -> Optional[List[Dict[str, Any]]]:
@@ -171,7 +179,7 @@ class SQLInterface:
             rows = self.cursor.fetchall()
             if self.debug:
                 logger.debug(f"Rows fetched: {len(rows)}")
-            
+
             # Convert rows to list of dictionaries, cleaning any string values
             cleaned_results = []
             for row in rows:
@@ -228,7 +236,7 @@ class SQLInterface:
             except pyodbc.Error as ex:
                 logger.warning(f"Error closing cursor: {ex}")
             finally:
-                self.cursor = None # Ensure cursor is None regardless of close success
+                self.cursor = None  # Ensure cursor is None regardless of close success
 
         if self.connection:
             try:
@@ -239,4 +247,4 @@ class SQLInterface:
             except pyodbc.Error as ex:
                 logger.warning(f"Error closing connection: {ex}")
             finally:
-                self.connection = None # Ensure connection is None regardless of close success
+                self.connection = None  # Ensure connection is None regardless of close success

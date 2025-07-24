@@ -1,6 +1,8 @@
-from .models import MatchInfo, MatchCandidate
+"""Patient matching functionality for fuzzy search capabilities."""
+
 from .fuzzy_matchers import FuzzyMatcher
-from .search_strategy import PatientSearchStrategy, DEFAULT_PATIENT_SEARCH_CONFIG
+from .models import MatchCandidate, MatchInfo
+from .search_strategy import DEFAULT_PATIENT_SEARCH_CONFIG, PatientSearchStrategy
 
 __all__ = [
     "MatchInfo",

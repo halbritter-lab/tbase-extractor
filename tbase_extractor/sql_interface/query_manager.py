@@ -1,8 +1,12 @@
+"""Query management utilities for SQL template loading and execution."""
+
 import os
-from typing import Dict, Any, List, Union
 from pathlib import Path
+from typing import Any, Dict, List, Union
+
 from .db_interface import SQLInterface
 from .exceptions import QueryTemplateNotFoundError
+
 
 class QueryManager:
     """Manages SQL queries, including template loading and parameter substitution."""
@@ -20,63 +24,61 @@ class QueryManager:
         """
         if templates_dir is None:
             raise ValueError("templates_dir cannot be None")
-            
+
         # Convert to string if it's a Path or similar object
         templates_dir_str = str(templates_dir)
-        
+
         # Strict validation
         if not os.path.exists(templates_dir_str):
             raise ValueError(f"templates_dir path does not exist: {templates_dir_str}")
         if not os.path.isdir(templates_dir_str):
             raise ValueError(f"templates_dir is not a directory: {templates_dir_str}")
-            
+
         self.templates_dir = templates_dir_str
         self.debug = debug
-        
+
         if self.debug:
-            template_files = [f for f in os.listdir(self.templates_dir) if f.endswith('.sql')]
+            template_files = [f for f in os.listdir(self.templates_dir) if f.endswith(".sql")]
             print(f"[DEBUG QueryManager] Initialized with templates_dir: '{self.templates_dir}'")
             print(f"[DEBUG QueryManager] Available SQL templates: {template_files}")
-            
+
     def load_query_template(self, template_name: str) -> str:
         """
         Load a SQL query template from file.
-        
+
         Args:
             template_name (str): Name of template file without .sql extension
-            
+
         Returns:
             str: The SQL query template string
-            
+
         Raises:
             QueryTemplateNotFoundError: If template file doesn't exist
         """
-        if not template_name.endswith('.sql'):
-            template_name += '.sql'
+        if not template_name.endswith(".sql"):
+            template_name += ".sql"
 
         template_path = os.path.join(self.templates_dir, template_name)
         if not os.path.isfile(template_path):
-            raise QueryTemplateNotFoundError(
-                f"SQL template file not found: {template_path}"
-            )
+            raise QueryTemplateNotFoundError(f"SQL template file not found: {template_path}")
 
         try:
-            with open(template_path, 'r', encoding='utf-8') as f:
+            with open(template_path, encoding="utf-8") as f:
                 template = f.read()
 
             if self.debug:
                 print(f"[DEBUG QueryManager] Loaded template '{template_name}'")
             return template
-        except IOError as e:
+        except OSError as e:
             raise QueryTemplateNotFoundError(
-                f"Error reading SQL template file '{template_path}': {e}"
+                f"Error reading SQL template file '{template_path}': {e}",
             )
 
     def execute_template_query(
-        self, 
+        self,
         db: SQLInterface,
         template_name: str,
-        params: Dict[str, Any] = None
+        params: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]] | None:
         """
         Execute a query from a template with parameters.
@@ -104,7 +106,7 @@ class QueryManager:
                 if self.debug and results is not None:
                     print(f"[DEBUG QueryManager] Query returned {len(results)} rows")
                 return results
-            
+
             if self.debug:
                 print("[DEBUG QueryManager] Query execution failed")
             return None
@@ -118,25 +120,29 @@ class QueryManager:
 
     def get_list_tables_query(self) -> tuple[str, tuple]:
         """Get a query to list available tables."""
-        return self.load_query_template('list_tables'), tuple()
+        return self.load_query_template("list_tables"), ()
 
     def get_patient_by_id_query(self, patient_id: int) -> tuple[str, tuple]:
         """Get a query to find a patient by ID."""
-        return self.load_query_template('get_patient_by_id'), (patient_id,)
+        return self.load_query_template("get_patient_by_id"), (patient_id,)
 
     def get_patient_by_name_dob_query(
-        self, 
-        first_name: str, 
-        last_name: str, 
-        dob_date
+        self,
+        first_name: str,
+        last_name: str,
+        dob_date,
     ) -> tuple[str, tuple]:
         """Get a query to find a patient by name and date of birth."""
         return (
-            self.load_query_template('get_patient_by_name_dob'),
-            (first_name, last_name, dob_date)
+            self.load_query_template("get_patient_by_name_dob"),
+            (first_name, last_name, dob_date),
         )
 
-    def get_patients_by_dob_year_range_query(self, start_year: int, end_year: int) -> tuple[str, tuple[int, int]]:
+    def get_patients_by_dob_year_range_query(
+        self,
+        start_year: int,
+        end_year: int,
+    ) -> tuple[str, tuple[int, int]]:
         """Get patients with DOB in a year range.
 
         Args:
@@ -158,7 +164,7 @@ class QueryManager:
         Returns:
             tuple[str, tuple[str]]: SQL query and params tuple
         """
-        if not any(c in lastname_pattern for c in ['%', '_']):
+        if not any(c in lastname_pattern for c in ["%", "_"]):
             lastname_pattern = f"{lastname_pattern}%"
         sql = self.load_query_template("get_patients_by_lastname_like")
         return sql, (lastname_pattern,)
@@ -170,9 +176,13 @@ class QueryManager:
             tuple[str, tuple[()]]: SQL query and empty params tuple
         """
         sql = self.load_query_template("get_all_patients")
-        return sql, tuple()
+        return sql, ()
 
-    def get_table_columns_query(self, table_name: str, table_schema: str) -> tuple[str, tuple[str, str]]:
+    def get_table_columns_query(
+        self,
+        table_name: str,
+        table_schema: str,
+    ) -> tuple[str, tuple[str, str]]:
         """Get a query to fetch column names and data types for a specific table."""
         sql = self.load_query_template("get_table_columns")
         return sql, (table_name, table_schema)
