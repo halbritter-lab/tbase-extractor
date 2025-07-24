@@ -89,9 +89,9 @@ dmypy.json
 .flake8
 
 # Development specific files
-.env            # environment variables file
-.flaskenv       # flask environment variables file
-.vscode.env     # vscode environment variables file
+.env
+.flaskenv
+.vscode.env
 
 # Database files
 *.sqlite3
