@@ -152,7 +152,8 @@ class PatientSearchStrategy:
                 )
             else:
                 candidate_sql, candidate_params = self.query_manager.get_patients_by_dob_year_range_query(
-                    start_year, end_year
+                    start_year,
+                    end_year,
                 )
             logger.info(f"Candidate SQL strategy: DOB year range ({start_year}-{end_year}).")
         elif ln_search and isinstance(ln_search, str):

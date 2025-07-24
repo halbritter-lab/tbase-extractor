@@ -122,7 +122,7 @@ class QueryManager:
         """Get a query to list available tables."""
         return self.load_query_template("list_tables"), ()
 
-    def get_patient_by_id_query(self, patient_id: int) -> tuple[str, tuple]:
+    def get_patient_by_id_query(self, patient_id: int, include_diagnoses: bool = True) -> tuple[str, tuple]:
         """Get a query to find a patient by ID."""
         return self.load_query_template("get_patient_by_id"), (patient_id,)
 
@@ -131,6 +131,7 @@ class QueryManager:
         first_name: str,
         last_name: str,
         dob_date,
+        include_diagnoses: bool = True,
     ) -> tuple[str, tuple]:
         """Get a query to find a patient by name and date of birth."""
         return (

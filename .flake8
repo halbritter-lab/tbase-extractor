@@ -1,0 +1,26 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E203, W503, E501, D103, D401, D400, D205
+exclude = 
+    .git,
+    __pycache__,
+    build,
+    dist,
+    .venv,
+    venv,
+    .tox,
+    .eggs,
+    *.egg-info,
+    .pytest_cache
+
+# Ignore specific errors:
+# E203: whitespace before ':' (conflicts with black)
+# W503: line break before binary operator (conflicts with black)
+# E501: line too long (handled by black)
+# D103: missing docstring in public function (legacy code)
+# D401: first line should be in imperative mood (medical context)
+# D400: first line should end with a period (style preference)
+# D205: blank line required between summary line and description
+
+per-file-ignores =
+    scripts/*:E402,D202

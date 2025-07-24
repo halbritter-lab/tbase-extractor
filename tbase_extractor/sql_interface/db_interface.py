@@ -6,8 +6,17 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-import pyodbc
-from bs4 import BeautifulSoup
+try:
+    import pyodbc
+except ImportError:
+    # Allow module to be imported for testing without pyodbc
+    pyodbc = None
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    # Fallback for environments without BeautifulSoup
+    BeautifulSoup = None
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -36,8 +45,12 @@ class SQLInterface:
         # Replace <br> tags with newlines
         text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
 
-        # Remove all other HTML tags using BeautifulSoup
-        text = BeautifulSoup(text, "html.parser").get_text(separator="\n")
+        # Remove all other HTML tags using BeautifulSoup if available
+        if BeautifulSoup is not None:
+            text = BeautifulSoup(text, "html.parser").get_text(separator="\n")
+        else:
+            # Fallback: simple HTML tag removal using regex
+            text = re.sub(r"<[^>]+>", "", text)
 
         # Normalize multiple consecutive newlines to a single newline
         text = re.sub(r"\n\s*\n+", "\n", text)
@@ -75,6 +88,11 @@ class SQLInterface:
         Returns:
             bool: True if connection is successful, False otherwise.
         """
+        # Check if pyodbc is available
+        if pyodbc is None:
+            logger.error("pyodbc not available. Cannot establish database connection.")
+            return False
+
         # Avoid reconnecting if already connected (simple check)
         if self.connection is not None:
             logger.warning("Connection object already exists. Close before reconnecting if needed.")
@@ -109,10 +127,14 @@ class SQLInterface:
                 logger.debug("Database connection established.")
             logger.info("Successfully connected to the database.")
             return True
-        except pyodbc.Error as ex:
-            sqlstate = ex.args[0]
-            logger.error(f"Error connecting to the database: SQLSTATE {sqlstate}")
-            logger.error(f"Error details: {ex.args[1]}")
+        except Exception as ex:  # Catch all exceptions since pyodbc might not be available
+            if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
+                # This is a pyodbc.Error
+                sqlstate = ex.args[0]
+                logger.error(f"Error connecting to the database: SQLSTATE {sqlstate}")
+                logger.error(f"Error details: {ex.args[1]}")
+            else:
+                logger.error(f"Error connecting to the database: {ex}")
             self.connection = None  # Ensure state reflects failure
             self.cursor = None
             return False
@@ -142,10 +164,14 @@ class SQLInterface:
             if self.debug:
                 logger.debug("Query executed successfully.")
             return True
-        except pyodbc.Error as ex:
-            sqlstate = ex.args[0]
-            error_message = ex.args[1]
-            logger.error(f"Error executing query: SQLSTATE {sqlstate} - {error_message}")
+        except Exception as ex:
+            if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
+                # This is a pyodbc.Error
+                sqlstate = ex.args[0]
+                error_message = ex.args[1]
+                logger.error(f"Error executing query: SQLSTATE {sqlstate} - {error_message}")
+            else:
+                logger.error(f"Error executing query: {ex}")
             self._rollback()  # Attempt to rollback on execution error
             return False
 
@@ -189,10 +215,14 @@ class SQLInterface:
                 cleaned_results.append(cleaned_row)
             return cleaned_results
 
-        except pyodbc.Error as ex:
+        except Exception as ex:
             # Catch errors specifically during fetch or description access
-            sqlstate = ex.args[0]
-            logger.error(f"Error fetching results from cursor: SQLSTATE {sqlstate} - {ex.args[1]}")
+            if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
+                # This is a pyodbc.Error
+                sqlstate = ex.args[0]
+                logger.error(f"Error fetching results from cursor: SQLSTATE {sqlstate} - {ex.args[1]}")
+            else:
+                logger.error(f"Error fetching results from cursor: {ex}")
             return None
 
     def commit(self) -> bool:
@@ -210,7 +240,7 @@ class SQLInterface:
         try:
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except Exception as ex:
             logger.error(f"Error committing transaction: {ex}")
             # Consider attempting rollback here as well if commit fails mid-transaction
             self._rollback()
@@ -222,7 +252,7 @@ class SQLInterface:
             try:
                 self.connection.rollback()
                 logger.info("Transaction rolled back due to error or explicit request.")
-            except pyodbc.Error as rollback_ex:
+            except Exception as rollback_ex:
                 # Log this prominently - failure during rollback is problematic
                 logger.critical(f"Error during transaction rollback: {rollback_ex}")
 
@@ -233,7 +263,7 @@ class SQLInterface:
         if self.cursor:
             try:
                 self.cursor.close()
-            except pyodbc.Error as ex:
+            except Exception as ex:
                 logger.warning(f"Error closing cursor: {ex}")
             finally:
                 self.cursor = None  # Ensure cursor is None regardless of close success
@@ -244,7 +274,7 @@ class SQLInterface:
                 # self._rollback() # Optional: Decide if implicit rollback on close is desired
                 self.connection.close()
                 logger.info("Connection closed.")
-            except pyodbc.Error as ex:
+            except Exception as ex:
                 logger.warning(f"Error closing connection: {ex}")
             finally:
                 self.connection = None  # Ensure connection is None regardless of close success

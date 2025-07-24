@@ -29,6 +29,8 @@ lint:
 	ruff check .
 	@echo "Checking code formatting with black..."
 	black --check --diff .
+	@echo "Running flake8..."
+	flake8 .
 	@echo "Running mypy type checking..."
 	mypy .
 

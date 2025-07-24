@@ -165,6 +165,10 @@ ignore = [
     "E501",  # line too long (handled by black with max-line-length)
     "W503",  # line break before binary operator (conflicts with black)
     "W504",  # line break after binary operator (conflicts with black)
+    "D103",  # missing docstring in public function (too many to fix now)
+    "D401",  # first line should be in imperative mood (medical context makes this difficult)
+    "D400",  # first line should end with a period
+    "D205",  # blank line required between summary line and description
 ]
 extend-ignore = ["E203", "W503"]
 exclude = [

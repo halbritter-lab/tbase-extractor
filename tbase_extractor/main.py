@@ -7,7 +7,10 @@ import sys
 from datetime import date, datetime
 from typing import Optional
 
-import pyodbc
+try:
+    import pyodbc
+except ImportError:
+    pyodbc = None
 from dotenv import load_dotenv
 
 from .matching import FuzzyMatcher, PatientSearchStrategy
@@ -468,7 +471,8 @@ def main():
             debug=debug,
         )
         logger.info(
-            f"Using dynamic query builder with patient_table='{patient_table}', diagnose_table='{diagnose_table}', schema='{schema}'",
+            f"Using dynamic query builder with patient_table='{patient_table}', "
+            f"diagnose_table='{diagnose_table}', schema='{schema}'",
         )
     else:
         query_manager = QueryManager(templates_dir, debug=debug)  # Pass debug to QM
@@ -745,7 +749,8 @@ def handle_get_patient_by_id(
                 failed_ids_details[str(current_patient_id)] = "Execution error"
 
         logger.info(
-            f"Batch processing summary: Successfully fetched data for {successful_count} out of {len(patient_id_strings)} IDs from CSV.",
+            f"Batch processing summary: Successfully fetched data for {successful_count} "
+            f"out of {len(patient_id_strings)} IDs from CSV.",
         )
         if failed_ids_details:
             logger.warning(f"Failed to process {len(failed_ids_details)} IDs: {failed_ids_details}")

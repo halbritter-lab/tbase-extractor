@@ -1,7 +1,17 @@
 """Utility functions for tbase-extractor"""
 
 import csv
-import importlib.resources as resources
+
+try:
+    from importlib.resources import files
+except ImportError:
+    # Fallback for Python < 3.9
+    try:
+        from importlib_resources import files
+    except ImportError:
+        from importlib import resources
+
+        files = getattr(resources, "files", None)
 import logging
 import os
 import sys
@@ -24,7 +34,7 @@ def resolve_templates_dir() -> str:
     # Strategy 1: Try importlib.resources (works for installed package)
     try:
         print("[DEBUG utils] Strategy 1: Using importlib.resources...", file=sys.stderr)
-        templates = resources.files("tbase_extractor.sql_templates")
+        templates = files("tbase_extractor.sql_templates")
         if templates and hasattr(templates, "is_dir") and templates.is_dir():
             # Convert to string path that can be used with os.path functions
             templates_str = str(templates)
@@ -99,7 +109,7 @@ def read_ids_from_csv(csv_file_path: str, id_column_name: str, logger: logging.L
     Returns:
         List[str]: List of IDs extracted from the CSV file
     """
-    ids = []
+    ids: List[str] = []
     if not os.path.exists(csv_file_path):
         logger.error(f"CSV file not found: {csv_file_path}")
         return ids
@@ -168,7 +178,7 @@ def read_patient_data_from_csv(
     Returns:
         List[Dict[str, Any]]: List of dictionaries containing patient data with row numbers
     """
-    patients_data = []
+    patients_data: List[Dict[str, Any]] = []
 
     if not os.path.exists(csv_file_path):
         if logger:

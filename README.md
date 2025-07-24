@@ -195,7 +195,7 @@ tbase_extractor/
 make help          # Show all available commands
 make install-dev   # Install with development dependencies
 make format        # Format code with black and ruff
-make lint          # Run all linting tools (ruff, black, mypy)
+make lint          # Run all linting tools (ruff, black, flake8, mypy)
 make type-check    # Run mypy type checking
 make test          # Run tests with pytest
 make test-cov      # Run tests with coverage
@@ -211,9 +211,10 @@ black .
 ruff --fix .
 
 # Check code quality
-ruff check .
-black --check .
-mypy .
+ruff check .        # Style and import linting
+black --check .     # Code formatting check  
+flake8 .           # Additional style and docstring checks
+mypy .             # Type checking (has known issues)
 
 # Run tests
 pytest
