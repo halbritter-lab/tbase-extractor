@@ -323,7 +323,7 @@ class TestExecuteTemplateQuery:
         mock_db.execute_query.return_value = True
         mock_db.fetch_results.return_value = [{"id": 1}]
 
-        with caplog.at_level('DEBUG'):
+        with caplog.at_level("DEBUG"):
             query_manager = QueryManager(temp_dir, debug=True)
             query_manager.execute_template_query(mock_db, "debug_query", {"patient_id": 123})
 
@@ -448,7 +448,7 @@ class TestQueryManagerIntegration:
         another_file = temp_dir / "another_debug.sql"
         another_file.write_text("SELECT 2;")
 
-        with caplog.at_level('DEBUG'):
+        with caplog.at_level("DEBUG"):
             QueryManager(temp_dir, debug=True)
 
         log_messages = caplog.text

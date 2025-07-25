@@ -1,7 +1,6 @@
 """Database interface module for SQL Server connections."""
 
 import html
-import logging
 import os
 import re
 import time
@@ -118,14 +117,14 @@ class SQLInterface:
                 f"UID={self.username_sql};"
                 f"PWD={self.password};"
             )
-            
+
             # Secure logging: Never log actual connection string or credentials
             logger.debug(f"Attempting database connection to server: {self.server or 'Unknown'}")
             logger.debug(f"Target database: {self.database or 'Unknown'}")
-            
+
             self.connection = pyodbc.connect(connection_string, autocommit=False)
             self.cursor = self.connection.cursor()
-            
+
             duration_ms = (time.time() - start_time) * 1000
             logger.log_authentication_event("DB_CONNECT", self.username_sql, success=True)
             logger.log_database_operation("CONNECT", success=True, duration_ms=duration_ms)
@@ -133,24 +132,32 @@ class SQLInterface:
             return True
         except Exception as ex:  # Catch all exceptions since pyodbc might not be available
             duration_ms = (time.time() - start_time) * 1000
-            
+
             # Secure error logging - don't expose sensitive connection details
             if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
                 # This is a pyodbc.Error - log SQLSTATE but sanitize details
                 sqlstate = ex.args[0]
-                logger.log_authentication_event("DB_CONNECT", self.username_sql, success=False, 
-                                               details=f"SQLSTATE {sqlstate}")
+                logger.log_authentication_event(
+                    "DB_CONNECT",
+                    self.username_sql,
+                    success=False,
+                    details=f"SQLSTATE {sqlstate}",
+                )
                 logger.error(f"Database connection failed: SQLSTATE {sqlstate}")
                 # Don't log detailed error message as it might contain sensitive info
                 logger.debug("Connection error details available in debug mode (sanitized)")
             else:
                 # Generic exception - sanitize the error message
                 error_type = type(ex).__name__
-                logger.log_authentication_event("DB_CONNECT", self.username_sql, success=False, 
-                                               details=f"Exception: {error_type}")
+                logger.log_authentication_event(
+                    "DB_CONNECT",
+                    self.username_sql,
+                    success=False,
+                    details=f"Exception: {error_type}",
+                )
                 logger.error(f"Database connection failed: {error_type}")
                 logger.debug(f"Connection error details: {str(ex)[:100]}...")  # Truncate for safety
-            
+
             logger.log_database_operation("CONNECT", success=False, duration_ms=duration_ms)
             self.connection = None  # Ensure state reflects failure
             self.cursor = None
@@ -173,7 +180,7 @@ class SQLInterface:
         if not self.connection or not self.cursor:
             logger.error("Not connected to the database. Cannot execute query.")
             return False
-        
+
         start_time = time.time()
         try:
             self.cursor.execute(query, params)
@@ -183,7 +190,7 @@ class SQLInterface:
         except Exception as ex:
             duration_ms = (time.time() - start_time) * 1000
             logger.log_sql_execution(query, params, success=False, duration_ms=duration_ms)
-            
+
             # Secure error logging - don't expose query details in error messages
             if pyodbc and hasattr(ex, "args") and len(ex.args) >= 2:
                 # This is a pyodbc.Error
@@ -194,7 +201,7 @@ class SQLInterface:
                 error_type = type(ex).__name__
                 logger.error(f"SQL execution failed: {error_type}")
                 logger.debug(f"Query execution error: {str(ex)[:100]}...")
-            
+
             self._rollback()  # Attempt to rollback on execution error
             return False
 
@@ -228,7 +235,7 @@ class SQLInterface:
             start_time = time.time()
             rows = self.cursor.fetchall()
             duration_ms = (time.time() - start_time) * 1000
-            
+
             row_count = len(rows)
             logger.log_database_operation("FETCH", success=True, duration_ms=duration_ms, row_count=row_count)
 

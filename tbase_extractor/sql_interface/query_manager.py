@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ..secure_logging import get_secure_logger
 from .db_interface import SQLInterface
 from .exceptions import QueryTemplateNotFoundError
-from ..secure_logging import get_secure_logger
 
 
 class QueryManager:
@@ -41,7 +41,7 @@ class QueryManager:
 
         if self.debug:
             template_files = [f for f in os.listdir(self.templates_dir) if f.endswith(".sql")]
-            self.logger.debug(f"QueryManager initialized with templates directory")
+            self.logger.debug("QueryManager initialized with templates directory")
             self.logger.debug(f"Available SQL templates: {len(template_files)} files")
 
     def load_query_template(self, template_name: str) -> str:

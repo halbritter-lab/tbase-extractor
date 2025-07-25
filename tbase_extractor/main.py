@@ -434,21 +434,21 @@ def setup_arg_parser():
 def setup_logging(debug: bool = False, log_file: Optional[str] = None) -> None:
     """
     Configure secure logging for the application.
-    
+
     Args:
         debug: Enable debug level logging
         log_file: Optional log file path
     """
     from .secure_logging import configure_secure_logging
-    
+
     # Determine if we're in production mode (opposite of debug)
     production_mode = not debug
     log_level = logging.DEBUG if debug else logging.INFO
-    
+
     configure_secure_logging(
         level=log_level,
         log_file=log_file,
-        production_mode=production_mode
+        production_mode=production_mode,
     )
 
 
@@ -466,11 +466,12 @@ def main():
     debug = getattr(args, "debug", False)
     log_file = os.getenv("SQL_APP_LOGFILE", None)
     setup_logging(debug, log_file)  # Ensure logger is configured
-    
+
     # Use secure logger for main application
     from .secure_logging import get_secure_logger
+
     logger = get_secure_logger("tbase_extractor.main", production_mode=not debug)
-    
+
     # Log application startup (without sensitive argument details)
     logger.info("Application started")
     if debug:
