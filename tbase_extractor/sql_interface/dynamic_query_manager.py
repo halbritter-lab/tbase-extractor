@@ -62,7 +62,7 @@ class DynamicQueryManager:
         self,
         first_name: str,
         last_name: str,
-        dob_date,
+        dob_date: Any,
         include_diagnoses: bool = False,
     ) -> Tuple[str, Tuple[Any, ...]]:
         """Get a query to find a patient by name and date of birth."""
@@ -204,7 +204,7 @@ class HybridQueryManager:
         self,
         first_name: str,
         last_name: str,
-        dob_date,
+        dob_date: Any,
         use_dynamic: bool = False,
         include_diagnoses: bool = False,
     ) -> Tuple[str, Tuple[Any, ...]]:

@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from datetime import date, datetime
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 try:
     import pyodbc
@@ -642,7 +642,7 @@ if __name__ == "__main__":
 
 def handle_list_tables(
     args: argparse.Namespace,
-    query_manager,
+    query_manager: Any,
     db: SQLInterface,
     logger: logging.Logger,
 ) -> Tuple[Optional[list], str]:
@@ -1018,7 +1018,7 @@ def handle_get_table_columns(
 
 def handle_discover_patient_tables(
     args: argparse.Namespace,
-    _query_manager,
+    _query_manager: Any,
     db: SQLInterface,
     logger: logging.Logger,
 ) -> Tuple[Optional[list], str]:
@@ -1056,7 +1056,7 @@ def handle_discover_patient_tables(
 
 def handle_query_custom_tables(
     args: argparse.Namespace,
-    _query_manager,
+    _query_manager: Any,
     db: SQLInterface,
     logger: logging.Logger,
     parser: argparse.ArgumentParser,

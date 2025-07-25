@@ -17,7 +17,7 @@ try:
     from bs4 import BeautifulSoup
 except ImportError:
     # Fallback for environments without BeautifulSoup
-    BeautifulSoup = None
+    BeautifulSoup = None  # type: ignore
 
 from ..secure_logging import get_secure_logger
 

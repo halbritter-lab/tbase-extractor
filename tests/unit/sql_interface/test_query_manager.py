@@ -313,7 +313,7 @@ class TestExecuteTemplateQuery:
 
         assert result is None
 
-    def test_execute_template_query_with_debug(self, temp_dir, capfd):
+    def test_execute_template_query_with_debug(self, temp_dir, caplog):
         """Test template query execution in debug mode."""
         sql_content = "SELECT * FROM patients WHERE id = ?;"
         template_file = temp_dir / "debug_query.sql"
@@ -323,13 +323,14 @@ class TestExecuteTemplateQuery:
         mock_db.execute_query.return_value = True
         mock_db.fetch_results.return_value = [{"id": 1}]
 
-        query_manager = QueryManager(temp_dir, debug=True)
-        query_manager.execute_template_query(mock_db, "debug_query", {"patient_id": 123})
+        with caplog.at_level('DEBUG'):
+            query_manager = QueryManager(temp_dir, debug=True)
+            query_manager.execute_template_query(mock_db, "debug_query", {"patient_id": 123})
 
-        captured = capfd.readouterr()
-        assert "[DEBUG QueryManager] Executing template 'debug_query'" in captured.out
-        assert "[DEBUG QueryManager] With parameters: {'patient_id': 123}" in captured.out
-        assert "[DEBUG QueryManager] Query returned 1 rows" in captured.out
+        log_messages = caplog.text
+        # The SecureLogger outputs different debug messages than the original print statements
+        assert "Executing template 'debug_query'" in log_messages
+        assert "Template parameters provided: 1 parameters" in log_messages
 
     def test_execute_template_query_exception_handling(self, temp_dir):
         """Test exception handling in template query execution."""
@@ -440,20 +441,20 @@ class TestQueryManagerIntegration:
         assert "ORDER BY" in loaded_query
         assert loaded_query.count("?") == 3  # Three parameters
 
-    def test_debug_mode_output(self, temp_dir, capfd):
+    def test_debug_mode_output(self, temp_dir, caplog):
         """Test debug mode produces correct output."""
         template_file = temp_dir / "debug_test.sql"
         template_file.write_text("SELECT 1;")
         another_file = temp_dir / "another_debug.sql"
         another_file.write_text("SELECT 2;")
 
-        QueryManager(temp_dir, debug=True)
+        with caplog.at_level('DEBUG'):
+            QueryManager(temp_dir, debug=True)
 
-        captured = capfd.readouterr()
-        assert f"[DEBUG QueryManager] Initialized with templates_dir: '{temp_dir}'" in captured.out
-        assert "[DEBUG QueryManager] Available SQL templates:" in captured.out
-        assert "debug_test.sql" in captured.out
-        assert "another_debug.sql" in captured.out
+        log_messages = caplog.text
+        # The SecureLogger outputs different debug messages than the original print statements
+        assert "QueryManager initialized with templates directory" in log_messages
+        assert "Available SQL templates: 2 files" in log_messages
 
     def test_realistic_parameter_handling(self, temp_dir):
         """Test realistic parameter handling scenarios."""

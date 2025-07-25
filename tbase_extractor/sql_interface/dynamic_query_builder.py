@@ -29,7 +29,7 @@ class TableConfig:
 
     name: str
     schema: str = "dbo"
-    alias: str = None
+    alias: Optional[str] = None
 
     @property
     def full_name(self) -> str:
@@ -49,8 +49,8 @@ class ColumnConfig:
     """Configuration for table columns."""
 
     name: str
-    table_alias: str = None
-    alias: str = None
+    table_alias: Optional[str] = None
+    alias: Optional[str] = None
 
     @property
     def reference(self) -> str:
@@ -106,7 +106,7 @@ class DynamicQueryBuilder:
         self._joins.append(join_config)
         return self
 
-    def where(self, condition: str, *params) -> "DynamicQueryBuilder":
+    def where(self, condition: str, *params: Any) -> "DynamicQueryBuilder":
         """Add WHERE condition with parameters."""
         self._where_conditions.append(condition)
         self._parameters.extend(params)
@@ -228,7 +228,7 @@ class PatientQueryBuilder:
         self,
         first_name: str,
         last_name: str,
-        dob,
+        dob: Any,
         include_diagnoses: bool = False,
     ) -> Tuple[str, Tuple[Any, ...]]:
         """Build query to get patient by name and DOB."""

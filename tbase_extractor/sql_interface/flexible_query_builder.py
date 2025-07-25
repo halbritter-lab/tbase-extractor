@@ -20,7 +20,7 @@ class TableSpec:
 
     name: str
     schema: str = "dbo"
-    alias: str = None
+    alias: Optional[str] = None
     columns: List[str] = field(default_factory=list)  # Specific columns to select, empty = all
     patient_id_column: str = "PatientID"  # Name of the patient ID column in this table
 
@@ -284,7 +284,7 @@ class FlexibleQueryManager:
         patient_id: int,
         table_specs: List[str],
         join_type: str = "LEFT",
-        order_by: List[str] = None,
+        order_by: Optional[List[str]] = None,
         limit: Optional[int] = None,
     ) -> Tuple[str, Tuple[Any, ...]]:
         """

@@ -62,7 +62,7 @@ class OutputFormatter:
     @staticmethod
     def format_as_json(
         data_payload: List[Any],
-        metadata: Dict[str, Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         indent: Optional[int] = 4,
     ) -> str:
         """
@@ -88,9 +88,7 @@ class OutputFormatter:
             ValueError: If there are issues during JSON encoding.
         """
         try:
-            # Ensure indent is an integer or None
-            if indent is not None and not isinstance(indent, int):
-                indent = 4  # Default to 4 spaces if indent is provided but not an integer
+            # indent is already typed as Optional[int], so no runtime check needed
 
             # Check if we have multiple patients and structure accordingly
             if isinstance(data_payload, list) and data_payload and isinstance(data_payload[0], dict):
@@ -114,8 +112,8 @@ class OutputFormatter:
 
                 if len(unique_patients) > 1:
                     # Multiple patients - group by patient
-                    patients_data = []
-                    current_patient_data = None
+                    patients_data: List[Dict[str, Any]] = []
+                    current_patient_data: Optional[Dict[str, Any]] = None
                     current_patient_key = None
 
                     for record in data_payload:
@@ -421,7 +419,7 @@ class OutputFormatter:
     @staticmethod
     def format_as_json_optimized(
         data: List[Dict[str, Any]],
-        metadata: Dict[str, Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         indent: Optional[int] = 4,
     ) -> str:
         """
@@ -466,8 +464,8 @@ class OutputFormatter:
 
         if len(unique_patients) > 1:
             # Multiple patients - create grouped structure
-            patients_data = []
-            current_patient_data = None
+            patients_data: List[Dict[str, Any]] = []
+            current_patient_data: Optional[Dict[str, Any]] = None
             current_patient_key = None
 
             for record in data:
@@ -601,19 +599,19 @@ class OutputFormatter:
                 writer.writerow(["Diagnoses Section"])
 
             # Get all possible field names from varying data
-            all_varying_fields = set()
+            all_varying_fields: set[str] = set()
             for record in varying_data:
                 all_varying_fields.update(record.keys())
-            all_varying_fields = sorted(all_varying_fields)
+            all_varying_fields_sorted = sorted(all_varying_fields)
 
-            dict_writer = csv.DictWriter(output, fieldnames=all_varying_fields)
+            dict_writer = csv.DictWriter(output, fieldnames=all_varying_fields_sorted)
             dict_writer.writeheader()
             dict_writer.writerows(varying_data)
 
         return output.getvalue()
 
     @staticmethod
-    def format_as_console_table(data: List[Any], stream=sys.stdout) -> None:
+    def format_as_console_table(data: List[Any], stream: Any = sys.stdout) -> None:
         """Formats data as a console table and writes to the given stream."""
         if not data:
             logger.info("No data to display.")

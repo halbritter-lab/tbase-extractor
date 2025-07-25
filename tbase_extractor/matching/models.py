@@ -1,7 +1,7 @@
 """Data models for patient matching functionality."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -30,11 +30,8 @@ class MatchCandidate:
     def calculate_overall_score_and_type(
         self,
         field_weights: Dict[str, float],
-        score_mapping: Dict[
-            str,
-            float,
-        ],  # e.g., {"Exact": 1.0, "Fuzzy": "use_similarity", "YearMismatch": 0.7}
-    ):
+        score_mapping: Dict[str, Union[float, str]],  # Allow both float and string values
+    ) -> None:
         """Calculate overall match score and determine primary match type."""
         calculated_score = 0.0
         field_match_summaries = []
@@ -47,7 +44,7 @@ class MatchCandidate:
 
             if info.match_type in score_mapping:
                 score_source = score_mapping[info.match_type]
-                if score_source == "use_similarity":
+                if isinstance(score_source, str) and score_source == "use_similarity":
                     base_score = info.similarity_score if info.similarity_score is not None else 0.0
                 elif isinstance(score_source, (int, float)):
                     base_score = float(score_source)

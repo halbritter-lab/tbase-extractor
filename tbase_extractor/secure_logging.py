@@ -157,28 +157,28 @@ class SecureLogger:
         except Exception:
             return "<error parsing SQL>"
 
-    def debug(self, message: str, **kwargs) -> None:
+    def debug(self, message: str, **kwargs: Any) -> None:
         """Log debug message with security filtering."""
         if self.logger.isEnabledFor(logging.DEBUG):
             sanitized = self._sanitize_message(message)
             self.logger.debug(sanitized, **kwargs)
 
-    def info(self, message: str, **kwargs) -> None:
+    def info(self, message: str, **kwargs: Any) -> None:
         """Log info message with security filtering."""
         sanitized = self._sanitize_message(message)
         self.logger.info(sanitized, **kwargs)
 
-    def warning(self, message: str, **kwargs) -> None:
+    def warning(self, message: str, **kwargs: Any) -> None:
         """Log warning message with security filtering."""
         sanitized = self._sanitize_message(message)
         self.logger.warning(sanitized, **kwargs)
 
-    def error(self, message: str, **kwargs) -> None:
+    def error(self, message: str, **kwargs: Any) -> None:
         """Log error message with security filtering."""
         sanitized = self._sanitize_message(message)
         self.logger.error(sanitized, **kwargs)
 
-    def critical(self, message: str, **kwargs) -> None:
+    def critical(self, message: str, **kwargs: Any) -> None:
         """Log critical message with security filtering."""
         sanitized = self._sanitize_message(message)
         self.logger.critical(sanitized, **kwargs)

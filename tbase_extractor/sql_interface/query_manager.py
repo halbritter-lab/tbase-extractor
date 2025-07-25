@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .db_interface import SQLInterface
 from .exceptions import QueryTemplateNotFoundError
@@ -80,8 +80,8 @@ class QueryManager:
         self,
         db: SQLInterface,
         template_name: str,
-        params: Dict[str, Any] = None,
-    ) -> List[Dict[str, Any]] | None:
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
         """
         Execute a query from a template with parameters.
 
@@ -129,7 +129,7 @@ class QueryManager:
         self,
         first_name: str,
         last_name: str,
-        dob_date,
+        dob_date: Any,
         include_diagnoses: bool = True,
     ) -> Tuple[str, tuple]:
         """Get a query to find a patient by name and date of birth."""
