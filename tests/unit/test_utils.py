@@ -1,7 +1,7 @@
 """Unit tests for tbase_extractor.utils module."""
 
 import csv
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,10 +18,11 @@ class TestResolveTemplatesDir:
     @patch("tbase_extractor.utils.files")
     def test_resolve_via_importlib_resources(self, mock_files):
         """Test successful resolution via importlib.resources."""
-        # Mock successful resources resolution
-        mock_template_dir = Mock()
+        # Mock successful resources resolution with spec to avoid method assignment issues
+        mock_template_dir = MagicMock()
         mock_template_dir.is_dir.return_value = True
-        mock_template_dir.__str__ = Mock(return_value="/test/templates")
+        # Create the mock with return_value for str method
+        mock_template_dir.__str__ = MagicMock(return_value="/test/templates")  # type: ignore[method-assign]
         mock_files.return_value = mock_template_dir
 
         with patch("os.path.isdir", return_value=True):

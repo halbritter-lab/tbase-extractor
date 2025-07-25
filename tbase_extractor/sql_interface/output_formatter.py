@@ -6,7 +6,7 @@ import json
 import logging
 import sys
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Union
 
 from ..matching.models import MatchCandidate
 
@@ -435,9 +435,9 @@ class OutputFormatter:
             str: Optimized JSON with patient info grouped
         """
         if not data:
-            structured_output = {"metadata": metadata or {}, "data": []}
+            empty_output = {"metadata": metadata or {}, "data": []}
             return json.dumps(
-                structured_output,
+                empty_output,
                 default=OutputFormatter._datetime_serializer,
                 indent=indent,
             )
@@ -500,7 +500,7 @@ class OutputFormatter:
             if current_patient_data is not None:
                 patients_data.append(current_patient_data)
 
-            optimized_data = patients_data
+            optimized_data: Union[List[Dict[str, Any]], Dict[str, Any]] = patients_data
         else:
             # Single patient - use original optimized structure
             patient_info = {}
@@ -526,7 +526,7 @@ class OutputFormatter:
             # Build optimized output structure
             optimized_data = {"patient_info": patient_info, "diagnoses": varying_data}
 
-        structured_output = {"metadata": metadata or {}, "data": optimized_data}
+        structured_output: Dict[str, Any] = {"metadata": metadata or {}, "data": optimized_data}
 
         return json.dumps(
             structured_output,
@@ -599,7 +599,7 @@ class OutputFormatter:
                 writer.writerow(["Diagnoses Section"])
 
             # Get all possible field names from varying data
-            all_varying_fields: set[str] = set()
+            all_varying_fields: Set[str] = set()
             for record in varying_data:
                 all_varying_fields.update(record.keys())
             all_varying_fields_sorted = sorted(all_varying_fields)

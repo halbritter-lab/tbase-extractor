@@ -3,7 +3,7 @@
 import csv
 
 try:
-    from importlib.resources import files
+    from importlib.resources import files  # type: ignore[attr-defined]
 except ImportError:
     # Fallback for Python < 3.9
     try:

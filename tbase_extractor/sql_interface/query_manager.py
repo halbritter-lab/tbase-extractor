@@ -142,6 +142,7 @@ class QueryManager:
         self,
         start_year: int,
         end_year: int,
+        include_diagnoses: bool = True,
     ) -> Tuple[str, Tuple[int, int]]:
         """Get patients with DOB in a year range.
 
@@ -155,7 +156,11 @@ class QueryManager:
         sql = self.load_query_template("get_patients_by_dob_year_range")
         return sql, (start_year, end_year)
 
-    def get_patients_by_lastname_like_query(self, lastname_pattern: str) -> Tuple[str, Tuple[str]]:
+    def get_patients_by_lastname_like_query(
+        self,
+        lastname_pattern: str,
+        include_diagnoses: bool = True,
+    ) -> Tuple[str, Tuple[str]]:
         """Get patients with last names matching a pattern.
 
         Args:
@@ -169,7 +174,7 @@ class QueryManager:
         sql = self.load_query_template("get_patients_by_lastname_like")
         return sql, (lastname_pattern,)
 
-    def get_all_patients_query(self) -> Tuple[str, Tuple[()]]:
+    def get_all_patients_query(self, include_diagnoses: bool = True) -> Tuple[str, Tuple[()]]:
         """Get all patients from the database. Use with caution!
 
         Returns:

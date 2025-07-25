@@ -41,14 +41,14 @@ class PatientSearchStrategy:
         self.query_manager = query_manager
         self.fuzzy_matcher = fuzzy_matcher
         # Deep merge config if it contains nested dicts like db_column_map
-        merged_config = {**DEFAULT_PATIENT_SEARCH_CONFIG}
+        merged_config: Dict[str, Any] = {**DEFAULT_PATIENT_SEARCH_CONFIG}
         if config:
             for key, value in config.items():
                 if isinstance(value, dict) and key in merged_config and isinstance(merged_config[key], dict):
                     merged_config[key] = {**merged_config[key], **value}
                 else:
                     merged_config[key] = value
-        self.config = merged_config
+        self.config: Dict[str, Any] = merged_config
 
         # Validate essential keys in config
         for map_key in ["first_name", "last_name", "dob"]:

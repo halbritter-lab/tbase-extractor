@@ -214,7 +214,7 @@ def group_results_by_patient(
     filename_template: str,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Group results by patient based on the filename template fields."""
-    grouped_data = {}
+    grouped_data: Dict[str, List[Dict[str, Any]]] = {}
 
     for i, row_data in enumerate(processed_results, 1):
         try:

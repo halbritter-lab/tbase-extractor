@@ -52,7 +52,7 @@ class SQLInterface:
             text = BeautifulSoup(text, "html.parser").get_text(separator="\n")
         else:
             # Fallback: simple HTML tag removal using regex
-            text = re.sub(r"<[^>]+>", "", text)
+            text = re.sub(r"<[^>]+>", "", text)  # type: ignore[unreachable]
 
         # Normalize multiple consecutive newlines to a single newline
         text = re.sub(r"\n\s*\n+", "\n", text)

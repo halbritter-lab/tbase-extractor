@@ -1,7 +1,7 @@
 """Data models for patient matching functionality."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 
 @dataclass
@@ -29,8 +29,8 @@ class MatchCandidate:
 
     def calculate_overall_score_and_type(
         self,
-        field_weights: Dict[str, float],
-        score_mapping: Dict[str, Union[float, str]],  # Allow both float and string values
+        field_weights: Mapping[str, float],
+        score_mapping: Mapping[str, Union[float, str]],  # Allow both float and string values
     ) -> None:
         """Calculate overall match score and determine primary match type."""
         calculated_score = 0.0

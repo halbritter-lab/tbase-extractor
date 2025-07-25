@@ -278,6 +278,7 @@ class TestCompareDates:
 
         # Lenient should be year mismatch (tolerance=3, diff=2)
         assert lenient_result.match_type == "YearMismatch"
+        assert lenient_result.details is not None
         assert "Year diff: 2" in lenient_result.details
 
     def test_edge_case_leap_year(self, fuzzy_matcher):

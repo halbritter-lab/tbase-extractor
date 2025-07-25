@@ -183,6 +183,11 @@ class SecureLogger:
         sanitized = self._sanitize_message(message)
         self.logger.critical(sanitized, **kwargs)
 
+    def exception(self, message: str, **kwargs: Any) -> None:
+        """Log exception message with security filtering."""
+        sanitized = self._sanitize_message(message)
+        self.logger.exception(sanitized, **kwargs)
+
     def log_database_operation(
         self,
         operation: str,

@@ -1,6 +1,7 @@
 """Unit tests for tbase_extractor.matching.models module."""
 
 from datetime import date
+from typing import Dict, Union
 
 import pytest
 
@@ -137,7 +138,7 @@ class TestCalculateOverallScoreAndType:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 0.3, "LastName": 0.4, "DOB": 0.3}
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
+        score_mapping: Dict[str, Union[float, str]] = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 
@@ -156,7 +157,12 @@ class TestCalculateOverallScoreAndType:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 0.3, "LastName": 0.4, "DOB": 0.3}
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity", "YearMismatch": 0.7, "Mismatch": 0.0}
+        score_mapping: Dict[str, Union[float, str]] = {
+            "Exact": 1.0,
+            "Fuzzy": "use_similarity",
+            "YearMismatch": 0.7,
+            "Mismatch": 0.0,
+        }
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 
@@ -180,7 +186,7 @@ class TestCalculateOverallScoreAndType:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 0.3, "LastName": 0.4, "DOB": 0.3}
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
+        score_mapping: Dict[str, Union[float, str]] = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 
@@ -198,7 +204,7 @@ class TestCalculateOverallScoreAndType:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 0.5, "LastName": 0.5}
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
+        score_mapping: Dict[str, Union[float, str]] = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 
@@ -217,7 +223,7 @@ class TestCalculateOverallScoreAndType:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 1.0}  # Missing UnweightedField
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
+        score_mapping: Dict[str, Union[float, str]] = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 
@@ -236,7 +242,7 @@ class TestCalculateOverallScoreAndType:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 0.5, "LastName": 0.5}
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity"}  # Missing UnknownType
+        score_mapping: Dict[str, Union[float, str]] = {"Exact": 1.0, "Fuzzy": "use_similarity"}  # Missing UnknownType
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 
@@ -326,7 +332,7 @@ class TestMatchingModelsIntegration:
 
         # Typical field weights for patient matching
         field_weights = {"FirstName": 0.3, "LastName": 0.4, "DOB": 0.3}
-        score_mapping = {
+        score_mapping: Dict[str, Union[float, str]] = {
             "Exact": 1.0,
             "Fuzzy": "use_similarity",
             "YearMismatch": 0.7,
@@ -345,6 +351,7 @@ class TestMatchingModelsIntegration:
 
         # Verify metadata is preserved
         assert candidate.csv_input_row_number == 3
+        assert candidate.csv_input_data is not None
         assert candidate.csv_input_data["FirstName"] == "Hans"
 
     def test_field_match_summaries_ordering(self):
@@ -359,7 +366,7 @@ class TestMatchingModelsIntegration:
         candidate = MatchCandidate(db_record=db_record, match_fields_info=match_fields)
 
         field_weights = {"FirstName": 0.3, "LastName": 0.4, "DOB": 0.3}
-        score_mapping = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
+        score_mapping: Dict[str, Union[float, str]] = {"Exact": 1.0, "Fuzzy": "use_similarity", "Mismatch": 0.0}
 
         candidate.calculate_overall_score_and_type(field_weights, score_mapping)
 

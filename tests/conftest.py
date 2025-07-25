@@ -237,7 +237,7 @@ class CustomAssertions:
     """Custom assertion helpers for domain-specific testing."""
 
     @staticmethod
-    def assert_valid_patient_data(data: Dict):
+    def assert_valid_patient_data(data: Dict) -> None:
         """Assert that data contains valid patient fields."""
         required_fields = ["PatientID", "Name", "Vorname"]
         for field in required_fields:
@@ -245,7 +245,7 @@ class CustomAssertions:
             assert data[field] is not None, f"Field {field} should not be None"
 
     @staticmethod
-    def assert_valid_match_info(match_info: MatchInfo):
+    def assert_valid_match_info(match_info: MatchInfo) -> None:
         """Assert that MatchInfo object is properly constructed."""
         assert match_info.field_name is not None
         assert match_info.match_type in ["Exact", "Fuzzy", "Mismatch", "NotCompared", "MissingDBValue", "YearMismatch"]
@@ -253,7 +253,7 @@ class CustomAssertions:
             assert 0.0 <= match_info.similarity_score <= 1.0
 
     @staticmethod
-    def assert_sql_query_format(query: str):
+    def assert_sql_query_format(query: str) -> None:
         """Assert that SQL query is properly formatted."""
         assert isinstance(query, str)
         assert len(query.strip()) > 0

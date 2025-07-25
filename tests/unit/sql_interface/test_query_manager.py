@@ -39,7 +39,7 @@ class TestQueryManagerInit:
     def test_init_with_none_directory(self):
         """Test initialization with None directory raises ValueError."""
         with pytest.raises(ValueError, match="templates_dir cannot be None"):
-            QueryManager(None)
+            QueryManager(None)  # type: ignore[arg-type]
 
     def test_init_with_nonexistent_directory(self):
         """Test initialization with nonexistent directory raises ValueError."""
@@ -387,6 +387,7 @@ class TestQueryManagerIntegration:
 
         # Test execution
         result = query_manager.execute_template_query(mock_db, "get_patient_by_id", {"id": 1001})
+        assert result is not None
         assert len(result) == 1
         assert result[0]["PatientID"] == 1001
         assert result[0]["Name"] == "Müller"

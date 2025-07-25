@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from datetime import date, datetime
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 try:
     import pyodbc
@@ -43,7 +43,7 @@ def parse_dob_str(dob_str: Optional[str], logger: logging.Logger) -> Optional[da
 def determine_output_format(
     user_format: Optional[str],
     output_file_path: Optional[str],
-    logger: logging.Logger,
+    logger: Any,  # Accept both logging.Logger and SecureLogger
 ) -> str:
     """Determines the effective output format."""
     if user_format:
@@ -479,6 +479,7 @@ def main():
 
     # Determine query manager based on use_dynamic_builder flag
     use_dynamic = getattr(args, "use_dynamic_builder", False)
+    query_manager: Union[QueryManager, HybridQueryManager]
     if use_dynamic:
         patient_table = getattr(args, "patient_table", "Patient")
         diagnose_table = getattr(args, "diagnose_table", "Diagnose")
@@ -511,7 +512,7 @@ def main():
 
             if args.action == "list-tables":
                 handler = ACTION_HANDLERS.get("list-tables")
-                if handler:
+                if handler and callable(handler):
                     results, query_display_name = handler(args, query_manager, db, logger)
                 else:  # Should not happen if parser is set up correctly
                     logger.error(f"No handler for action: {args.action}")
@@ -519,7 +520,7 @@ def main():
 
             elif args.action == "discover-patient-tables":
                 handler = ACTION_HANDLERS.get("discover-patient-tables")
-                if handler:
+                if handler and callable(handler):
                     results, query_display_name = handler(args, query_manager, db, logger)
                 else:
                     logger.error(f"No handler for action: {args.action}")
@@ -527,7 +528,7 @@ def main():
 
             elif args.action == "query-custom-tables":
                 handler = ACTION_HANDLERS.get("query-custom-tables")
-                if handler:
+                if handler and callable(handler):
                     results, query_display_name = handler(args, query_manager, db, logger, parser)
                 else:
                     logger.error(f"No handler for action: {args.action}")
@@ -535,14 +536,18 @@ def main():
 
             elif args.action == "query":
                 query_handler_map = ACTION_HANDLERS.get("query", {})
-                handler = query_handler_map.get(args.query_name)
-                if handler:
-                    # Pass parser to handlers that might call parser.error()
-                    results, query_display_name = handler(args, query_manager, db, logger, parser)
+                if isinstance(query_handler_map, dict):
+                    handler = query_handler_map.get(args.query_name)
+                    if handler and callable(handler):
+                        # Pass parser to handlers that might call parser.error()
+                        results, query_display_name = handler(args, query_manager, db, logger, parser)
+                    else:
+                        logger.error(
+                            f"Query name '{args.query_name}' is not recognized or implemented.",
+                        )
+                        sys.exit(1)
                 else:
-                    logger.error(
-                        f"Query name '{args.query_name}' is not recognized or implemented.",
-                    )
+                    logger.error("Invalid query handler configuration")
                     sys.exit(1)
             else:  # Should not happen due to argparse
                 logger.critical(f"Unknown action: {args.action}")
@@ -1339,7 +1344,7 @@ def handle_batch_search_demographics(
 
 
 # Action handlers dictionary mapping actions to their handler functions
-ACTION_HANDLERS = {
+ACTION_HANDLERS: Dict[str, Union[Callable[..., Any], Dict[str, Callable[..., Any]]]] = {
     "list-tables": handle_list_tables,
     "discover-patient-tables": handle_discover_patient_tables,
     "query-custom-tables": handle_query_custom_tables,
